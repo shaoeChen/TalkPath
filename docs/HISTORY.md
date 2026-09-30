@@ -4,6 +4,14 @@
 
 更新日期：2026-09-30
 
+## 2026-09-30 公開庫敏感資訊清查與遮罩
+
+- 來源：使用者要求檢查公開推送內容是否有密鑰外洩（簡單項目，未展開實作計畫）。
+- 發現：遠端 `main`（2 個提交）的 `docs/HISTORY.md` 以明文記錄舊 QwenASR（區網 `QwenASR-WebView.exe`）的 STT API key；另有區網 IP 與本機使用者路徑。目前 `.env` 中的 Vision／Text／STT 金鑰均未外洩，`.env*` 皆已被 `.gitignore` 排除。
+- 處理：以 `git filter-branch` 改寫 `main` 兩個提交，金鑰改為 `<redacted>`、區網 IP 改為 `<LAN-IP>`、使用者路徑改為 `Users/<user>`，以 `--force-with-lease` 強制推送。
+- 驗證：改寫後每個提交以 `git grep` 比對真實金鑰值、原區網 IP、原使用者路徑均為 0 命中；與改寫前差異僅 4 個文件 8 行。
+- 未完成／限制：舊金鑰須由使用者自行於 QwenASR-WebView 輪換；GitHub 舊提交可能短期仍可由 SHA 存取；本機 `backup/pre-redact-main`、`refs/original/` 及舊功能分支仍含原內容，不得推送。
+
 ## 2026-09-30 MY LESSONS 課程管理：課程詳情、附加匯入與頁碼警示
 
 - 來源：`docs/superpowers/plans/2026-09-30-lesson-library-append-import-implementation.md`（規格：`docs/superpowers/specs/2026-09-30-lesson-library-append-import-design.md`），分支 `feat/lesson-library-append`。
