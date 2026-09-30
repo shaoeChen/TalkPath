@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="TalkPath helps children turn English textbook pages into friendly practice."
+    />
+    <title>TalkPath | Learn English your way</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/screen-flow.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#home" data-action="home" aria-label="TalkPath home">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span>TalkPath</span>
+        </a>
+        <nav class="topnav" aria-label="Main navigation">
+          <button class="nav-link" type="button" data-action="progress">My progress</button>
+          <button class="nav-link" type="button" data-action="new-course">New lesson</button>
+          <button class="nav-link" type="button" data-action="lessons">My lessons</button>
+        </nav>
+      </header>
+
+      <main>
+        <section id="home-screen" class="screen hero-screen" data-screen="home">
+          <div class="hero-copy">
+            <p class="eyebrow">Your friendly English practice buddy</p>
+            <h1 data-screen-heading tabindex="-1">Turn a page into a learning adventure.</h1>
+            <p class="hero-lede">
+              Upload one textbook page, check the lesson details, and practise with activities
+              made just for you.
+            </p>
+            <button class="primary-button large-button" type="button" data-action="new-course">
+              Start a new lesson <span aria-hidden="true">→</span>
+            </button>
+            <p class="privacy-note"><span aria-hidden="true">🔒</span> Your lesson stays on this device.</p>
+          </div>
+          <div class="hero-art" aria-label="A friendly book and star illustration" role="img">
+            <div class="sun-shape"></div>
+            <div class="book-illustration">
+              <span class="book-line line-one"></span>
+              <span class="book-line line-two"></span>
+              <span class="book-line line-three"></span>
+            </div>
+            <span class="floating-star star-one" aria-hidden="true">✦</span>
+            <span class="floating-star star-two" aria-hidden="true">✧</span>
+            <span class="speech-bubble" aria-hidden="true">Let's learn!</span>
+          </div>
+        </section>
+
+        <section id="lessons-screen" class="screen content-screen" data-screen="lessons" hidden>
+          <div class="section-heading">
+            <p class="eyebrow">Pick up where you left off</p>
+            <h2 id="lessons-title" data-screen-heading tabindex="-1">My lessons</h2>
+            <p>Open a saved lesson and keep practising without uploading its page again.</p>
+          </div>
+          <div id="lessons-list" class="lessons-list" aria-live="polite"></div>
+          <p id="lessons-empty" class="lessons-empty" hidden>
+            No saved lessons yet.
+            <button class="secondary-button" type="button" data-action="new-course">Start a new lesson</button>
+          </p>
+          <p id="lessons-error" class="error-message" role="alert" aria-live="polite"></p>
+        </section>
+
+        <section id="lesson-detail-screen" class="screen content-screen" data-screen="lesson-detail" hidden>
+          <div class="section-heading">
+            <p class="eyebrow">Lesson contents</p>
+            <h2 id="detail-title" data-screen-heading tabindex="-1">Lesson</h2>
+            <p id="detail-scope" class="lesson-context"></p>
+          </div>
+          <div id="detail-batches" class="detail-batches" aria-live="polite"></div>
+          <p id="detail-error" class="error-message" role="alert" aria-live="polite"></p>
+          <div class="form-actions">
+            <button class="secondary-button" type="button" data-action="lessons">Back to my lessons</button>
+            <button id="detail-start" class="primary-button" type="button">Start practice <span aria-hidden="true">→</span></button>
+          </div>
+        </section>
+
+        <section id="new-course-screen" class="screen form-screen" data-screen="new-course" hidden>
+          <ol class="lesson-stepper" aria-label="Lesson setup progress">
+            <li aria-current="step"><span>1</span><strong>Upload</strong></li>
+            <li><span>2</span><strong>Details</strong></li>
+            <li><span>3</span><strong>Create</strong></li>
+          </ol>
+          <div class="section-heading">
+            <p class="eyebrow">Step 1 of 3</p>
+            <h2 data-screen-heading tabindex="-1">Show me your lesson</h2>
+            <p>Take a clear photo of a textbook page. We will use it to make your practice.</p>
+          </div>
+          <form id="course-form" class="card form-card" novalidate>
+            <label class="upload-dropzone" for="course-image">
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <span class="upload-title">Choose a textbook image</span>
+              <span class="upload-help">PNG, JPG, or WEBP · up to 10 MB</span>
+              <span id="selected-file" class="selected-file">No image selected yet</span>
+              <input id="course-image" name="course-image" type="file" accept="image/png,image/jpeg,image/webp" required />
+            </label>
+            <p id="upload-error" class="error-message" role="alert" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="secondary-button" type="button" data-action="home">Back</button>
+              <button class="primary-button" type="submit">Continue <span aria-hidden="true">→</span></button>
+            </div>
+          </form>
+        </section>
+
+        <section id="scope-screen" class="screen form-screen" data-screen="scope" hidden>
+          <ol class="lesson-stepper" aria-label="Lesson setup progress">
+            <li class="is-complete"><span aria-hidden="true">✓</span><strong>Upload</strong></li>
+            <li aria-current="step"><span>2</span><strong>Details</strong></li>
+            <li><span>3</span><strong>Create</strong></li>
+          </ol>
+          <div class="section-heading">
+            <p class="eyebrow">Step 2 of 3</p>
+            <h2 data-screen-heading tabindex="-1">Is this the right lesson?</h2>
+            <p>Check the page details with a grown-up before TalkPath reads the lesson.</p>
+          </div>
+          <form id="scope-form" class="card scope-card" novalidate>
+            <div class="scope-grid">
+              <label>Program<input id="scope-program" name="program" value="junior high" required /></label>
+              <label>Grade<input id="scope-grade" name="grade" value="7" required /></label>
+              <label>Subject<input id="scope-subject" name="subject" value="English" required /></label>
+              <label>Lesson<input id="scope-lesson" name="lesson" value="1" required /></label>
+              <label>Textbook<input id="scope-textbook" name="textbook" placeholder="Publisher, e.g. 康軒" /></label>
+              <label>Edition<input id="scope-edition" name="edition" placeholder="Optional" /></label>
+              <label class="wide-field">Pages<input id="scope-pages" name="pages" placeholder="Example: 12-13" /></label>
+            </div>
+            <div id="scope-notice" class="scope-notice" role="alert" hidden>
+              <p id="scope-notice-text"></p>
+              <div class="scope-notice-actions">
+                <button id="scope-notice-cancel" class="secondary-button" type="button">Cancel</button>
+                <button id="scope-notice-confirm" class="primary-button" type="button">Add anyway</button>
+              </div>
+            </div>
+            <p id="scope-error" class="error-message" role="alert" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="secondary-button" type="button" data-action="upload-step">Back</button>
+              <button class="primary-button" type="submit">Yes, check this lesson <span aria-hidden="true">→</span></button>
+            </div>
+          </form>
+        </section>
+
+        <section id="processing-screen" class="screen status-screen" data-screen="processing" hidden>
+          <ol class="lesson-stepper" aria-label="Lesson setup progress">
+            <li class="is-complete"><span aria-hidden="true">✓</span><strong>Upload</strong></li>
+            <li class="is-complete"><span aria-hidden="true">✓</span><strong>Details</strong></li>
+            <li aria-current="step"><span>3</span><strong>Create</strong></li>
+          </ol>
+          <div class="status-orbit" aria-hidden="true"><span>✦</span></div>
+          <div class="section-heading centered-heading">
+            <p class="eyebrow">Step 3 of 3</p>
+            <h2 data-screen-heading tabindex="-1">Making your lesson</h2>
+            <p id="status-label" aria-live="polite">Waiting to start…</p>
+            <div class="extraction-progress" aria-hidden="true"><span></span></div>
+          </div>
+          <div class="card agent-card">
+            <div class="agent-heading"><span class="agent-dot"></span><span>TalkPath buddy</span></div>
+            <p id="agent-message" class="agent-message" aria-live="polite">I am ready when you are!</p>
+            <button id="retry-connection" class="secondary-button retry-button" type="button" hidden>Try again</button>
+          </div>
+          <p id="processing-error" class="error-message centered-message" role="alert" aria-live="polite"></p>
+        </section>
+
+        <section id="preview-screen" class="screen content-screen" data-screen="preview" hidden>
+          <div class="section-heading">
+            <p class="eyebrow">Extraction result</p>
+            <h2 data-screen-heading tabindex="-1">Have a look before we practise</h2>
+            <p>Here is what TalkPath found in your textbook page.</p>
+            <p id="import-note" class="import-note" role="status" hidden></p>
+          </div>
+          <article class="card lesson-preview-card">
+            <div class="lesson-badge">Lesson preview</div>
+            <div class="preview-layout">
+              <div class="preview-summary">
+                <h3 id="lesson-title">Your English lesson</h3>
+                <p id="lesson-scope-summary" class="lesson-context"></p>
+                <p id="lesson-source-summary" class="lesson-context lesson-source-summary"></p>
+                <p id="lesson-passage" class="lesson-passage"></p>
+              </div>
+              <div class="preview-findings">
+                <h4>What we found</h4>
+                <div id="lesson-cards" class="lesson-cards">
+                  <p id="card-empty" class="card-empty" hidden>We will use the lesson passage for practice.</p>
+                  <div id="card-stage" class="card-stage" aria-live="polite"></div>
+                  <div id="card-nav" class="card-nav" hidden>
+                    <button id="card-prev" class="card-nav-button" type="button" aria-label="Previous card">&larr;</button>
+                    <span id="card-counter" class="card-counter" aria-live="polite"></span>
+                    <button id="card-next" class="card-nav-button" type="button" aria-label="Next card">&rarr;</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p id="preview-error" class="error-message" role="alert" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="secondary-button" type="button" data-action="new-course">Start a new lesson</button>
+              <button id="start-practice" class="primary-button" type="button" data-action="overview">Choose a practice <span aria-hidden="true">→</span></button>
+            </div>
+          </article>
+        </section>
+
+        <section id="overview-screen" class="screen content-screen" data-screen="overview" hidden>
+          <div class="section-heading overview-heading">
+            <div>
+              <p class="eyebrow">Your learning path</p>
+              <h2 id="overview-title" data-screen-heading tabindex="-1">Pick a practice</h2>
+              <div class="overview-lesson-context" aria-label="Current lesson">
+                <strong id="overview-lesson-title">Your English lesson</strong>
+                <span id="overview-lesson-scope"></span>
+              </div>
+              <p>Choose one activity at a time. You can come back and try another one.</p>
+            </div>
+            <div class="overview-actions">
+              <button class="text-button" type="button" data-action="preview">← Lesson preview</button>
+              <button class="text-button" type="button" data-action="progress">See my progress →</button>
+            </div>
+          </div>
+          <div id="activity-list" class="activity-grid" aria-live="polite"></div>
+        </section>
+
+        <section id="practice-screen" class="screen content-screen" data-screen="practice" hidden>
+          <div class="section-heading practice-heading">
+            <div>
+              <p class="eyebrow">One question at a time</p>
+              <h2 id="practice-title" data-screen-heading tabindex="-1">Let's practise</h2>
+              <p class="practice-progress" aria-live="polite">
+                <span id="practice-dots" class="practice-dots" aria-hidden="true"></span>
+                <span id="practice-question-label">Question 1</span>
+              </p>
+            </div>
+            <button class="text-button" type="button" data-action="overview">← Back to practice list</button>
+          </div>
+          <article id="practice-card" class="card practice-card">
+            <div id="practice-body"></div>
+          </article>
+          <p id="practice-error" class="error-message" role="alert" aria-live="polite"></p>
+        </section>
+
+        <section id="words-screen" class="screen content-screen" data-screen="words" hidden>
+          <div class="section-heading practice-heading">
+            <div>
+              <p class="eyebrow" id="words-lesson-scope">Vocabulary practice</p>
+              <h2 id="words-title" data-screen-heading tabindex="-1">Pick a word to practise</h2>
+              <p class="practice-sub" id="words-subtitle">Tap a card to listen and say the word.</p>
+            </div>
+            <button class="text-button" type="button" data-action="overview">← Back to practice list</button>
+          </div>
+          <div class="words-toolbar">
+            <label class="words-search" for="word-search">
+              <span aria-hidden="true">🔍</span>
+              <input id="word-search" type="search" placeholder="Find a word…" autocomplete="off" />
+            </label>
+            <button class="primary-button" id="words-practice-all" type="button">Practice all</button>
+          </div>
+          <p id="words-note" class="words-note" aria-live="polite"></p>
+          <div id="word-grid" class="word-grid" aria-live="polite"></div>
+          <p id="words-error" class="error-message" role="alert" aria-live="polite"></p>
+        </section>
+
+        <section id="results-screen" class="screen content-screen" data-screen="results" hidden>
+          <div class="section-heading">
+            <p class="eyebrow">Nice work</p>
+            <h2 data-screen-heading tabindex="-1">Your results and review</h2>
+            <p id="result-message">Finish an activity to see your answer feedback here.</p>
+          </div>
+          <div class="results-layout">
+            <article class="card result-card">
+              <span class="result-icon" aria-hidden="true">★</span>
+              <h3 id="result-title">Your practice is waiting</h3>
+              <p id="result-detail">Every try helps you remember a little more.</p>
+              <button class="secondary-button" id="quiz-practice-words" type="button" hidden>Practice these words</button>
+              <button class="primary-button" type="button" data-action="overview">Try another activity</button>
+            </article>
+            <article class="card review-card">
+              <h3>Review corner</h3>
+              <p>Questions you want to revisit will appear here.</p>
+              <ul id="review-list" class="review-list"><li>Complete an activity to add a review tip.</li></ul>
+            </article>
+          </div>
+        </section>
+
+        <section id="progress-screen" class="screen content-screen" data-screen="progress" hidden>
+          <div class="section-heading">
+            <p class="eyebrow">Keep going</p>
+            <h2 data-screen-heading tabindex="-1">My learning progress</h2>
+            <p>Your progress is kept on this device while you learn.</p>
+          </div>
+          <div class="progress-grid">
+            <article class="card progress-card"><span class="progress-number" id="progress-activities">0</span><span>activities tried</span></article>
+            <article class="card progress-card"><span class="progress-number" id="progress-correct">0</span><span>practice stars</span></article>
+            <article class="card progress-card"><span class="progress-number" id="progress-review">0</span><span>review tips</span></article>
+          </div>
+          <button class="secondary-button" type="button" data-action="overview">Back to my lesson</button>
+        </section>
+      </main>
+
+      <footer class="footer-note">TalkPath · Learn a little, speak a little, grow a lot.</footer>
+    </div>
+  </body>
+</html>

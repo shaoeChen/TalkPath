@@ -1,0 +1,1 @@
+"""TalkPath domain contracts."""

@@ -1,0 +1,31 @@
+.venv/
+.worktrees/
+worktrees/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.uv-cache/
+.mypy_cache/
+.ruff_cache/
+.superpowers/
+pi-extension/node_modules/
+.npm-cache/
+
+# Local application state
+data/*
+!data/lessonlens/
+data/lessonlens/*
+!data/lessonlens/.gitkeep
+
+# Uploaded image/audio temporary files
+uploads/
+tmp/uploads/
+*.upload-tmp
+
+# Local configuration and model credentials
+.env
+.env.*
+!.env.example
+model_credentials.*
+*.credentials
+*.secret

@@ -1,0 +1,48 @@
+name: talkpath-speech
+
+services:
+  stt:
+    image: lancelrq/qwen3-asr-service@sha256:9a82fe6266c139391749b2a8e89851a9ea0d3b2c61f9f04ced2f427ee756c0d0
+    command:
+      - --no-config
+      - --model-size=0.6b
+      - --enable-openai-api
+      - --no-web
+      - --no-stream
+      - --no-task-store
+    environment:
+      ASR_API_KEY: ${TALKPATH_STT_API_KEY:?請先在 .env 設定 TALKPATH_STT_API_KEY}
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - asr_models:/app/models
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8765/v2/health', timeout=5))['status'] == 'ready'"
+      interval: 10s
+      timeout: 8s
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped
+
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:fa52dce920c3610c78fccde4f6fa064fb092ae95018cf42b42d84d876655e8d9
+    ports:
+      - "127.0.0.1:8880:8880"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8880/health', timeout=5))['status'] == 'healthy'"
+      interval: 10s
+      timeout: 8s
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  asr_models:

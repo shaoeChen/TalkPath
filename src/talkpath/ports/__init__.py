@@ -1,0 +1,1 @@
+"""TalkPath dependency-inversion ports."""

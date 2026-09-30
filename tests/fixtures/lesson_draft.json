@@ -1,0 +1,41 @@
+{
+  "lesson_id": "junior-high-grade-1-english-lesson-01",
+  "scope": {
+    "program": "junior high",
+    "grade": "grade 1",
+    "subject": "english",
+    "textbook": "TalkPath English",
+    "edition": "2026",
+    "lesson": "lesson 1",
+    "pages": ["12", "13"],
+    "lesson_id": "junior-high-grade-1-english-lesson-01"
+  },
+  "title": "Hello, Amy!",
+  "passage": "Hello, Amy. How are you?",
+  "content_items": [
+    {
+      "content_id": "hello",
+      "type": "vocabulary",
+      "content": {
+        "word": "hello",
+        "meaning": "a greeting"
+      },
+      "source_page": "12",
+      "confidence": 0.98,
+      "status": "draft"
+    },
+    {
+      "content_id": "be-verb",
+      "type": "grammar",
+      "content": "Use am, is, and are with the subject.",
+      "source_page": "13",
+      "confidence": 0.94,
+      "status": "draft"
+    }
+  ],
+  "source_images": ["page-001.jpg"],
+  "extraction_status": "draft",
+  "provider": "fixture-vision",
+  "model": "fixture-model",
+  "operation_id": "op-lesson-001"
+}
