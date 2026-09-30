@@ -10,7 +10,9 @@
 - 發現：遠端 `main`（2 個提交）的 `docs/HISTORY.md` 以明文記錄舊 QwenASR（區網 `QwenASR-WebView.exe`）的 STT API key；另有區網 IP 與本機使用者路徑。目前 `.env` 中的 Vision／Text／STT 金鑰均未外洩，`.env*` 皆已被 `.gitignore` 排除。
 - 處理：以 `git filter-branch` 改寫 `main` 兩個提交，金鑰改為 `<redacted>`、區網 IP 改為 `<LAN-IP>`、使用者路徑改為 `Users/<user>`，以 `--force-with-lease` 強制推送。
 - 驗證：改寫後每個提交以 `git grep` 比對真實金鑰值、原區網 IP、原使用者路徑均為 0 命中；與改寫前差異僅 4 個文件 8 行。
-- 未完成／限制：舊金鑰須由使用者自行於 QwenASR-WebView 輪換；GitHub 舊提交可能短期仍可由 SHA 存取；本機 `backup/pre-redact-main`、`refs/original/` 及舊功能分支仍含原內容，不得推送。
+- 後續處理：原公開 repo 已設為 Private 並改名保留；另建立空白公開 `TalkPath`，只推送乾淨的 `main`，不推送本機備份與舊功能分支。
+- 驗證：新公開 repo 的 `main` 不含舊歷史；四個已知舊提交以匿名 GitHub API 查詢皆為 404。真實金鑰、原區網位址、使用者路徑、個人信箱與作者信箱均完成檢查；新提交作者為 noreply。舊 ASR 金鑰已由目前設定取代，對現行本機 STT 端點回 401，且已從忽略追蹤的回退設定中移除；QwenASR-WebView 舊連接埠目前未監聽。
+- 本機限制：`backup/pre-redact-main`、`refs/original/` 及舊功能分支仍含舊內容，保留本機但不得推送。
 
 ## 2026-09-30 MY LESSONS 課程管理：課程詳情、附加匯入與頁碼警示
 
