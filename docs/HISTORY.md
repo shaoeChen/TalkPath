@@ -489,3 +489,9 @@
 
 - 在快速開始中補上 STT 密鑰產生與 `.env` 設定、Docker Compose 啟動 TTS／STT、`healthy` 狀態檢查，再啟動 TalkPath API；同時說明首次模型下載及可略過語音服務的 fake provider 路徑。
 - 驗證：對照 `docs/SPEECH_SERVICES.md` 與 `docker/compose.speech.yml` 的欄位、埠及啟動指令；`docker compose config --quiet` 與 `git diff --check` 通過。
+
+## 2026-09-30 本機學習資料重置
+
+- 依使用者要求從零開始，先以 SQLite 交易清空 session、作答與複習紀錄；接著停止 TalkPath API，將舊 SQLite 檔、LessonLens 課程目錄、上傳圖片、暫存音訊及舊日誌移至 Windows 回收筒。保留 `data/lessonlens/.gitkeep`、程式碼、`.env` 與 Docker 模型設定。
+- 重新啟動 TalkPath API；驗證 `GET /api/lessons` 回 HTTP 200 且課程數為 0、LessonLens 僅餘 `.gitkeep`、上傳與暫存目錄均無檔案、舊 SQLite 檔已不存在。
+- 永久遞迴刪除曾遭自動審查以 `blocked by policy` 拒絕，因此改採可復原的 Windows 回收筒移除方式。
