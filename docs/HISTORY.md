@@ -474,3 +474,8 @@
 - 發行前初步掃描全部 322 個歷史 Git blob，未發現常見私鑰或服務 token 形式；`.env`、資料庫、上傳資料與日誌維持排除追蹤。
 - 驗證：`uv run pytest -q` → 385 passed、9 skipped、1 個既有警告；`node --test frontend/test/screen-flow.test.cjs` → 3 passed；`git diff --check` 通過。
 - 已知限制：另一個附屬工作樹的 `docs/PROGRESS.md` 有未提交變更，保留在本機；檔案內容掃描無法保證辨識所有格式的密鑰。
+
+## 2026-09-30 README 快速開始補上本機語音服務
+
+- 在快速開始中補上 STT 密鑰產生與 `.env` 設定、Docker Compose 啟動 TTS／STT、`healthy` 狀態檢查，再啟動 TalkPath API；同時說明首次模型下載及可略過語音服務的 fake provider 路徑。
+- 驗證：對照 `docs/SPEECH_SERVICES.md` 與 `docker/compose.speech.yml` 的欄位、埠及啟動指令；`docker compose config --quiet` 與 `git diff --check` 通過。

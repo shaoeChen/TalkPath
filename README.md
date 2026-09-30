@@ -6,19 +6,44 @@ TalkPath 是供小朋友使用的英文互動學習 Web 應用。使用者可匯
 
 ## 快速開始
 
-需要 Python 3.12 以上及 [uv](https://docs.astral.sh/uv/)。以下指令在專案根目錄執行：
+需要 Python 3.12 以上及 [uv](https://docs.astral.sh/uv/)；若要使用本機 TTS／STT，還需要 Docker Desktop。以下指令在專案根目錄執行：
 
 ```powershell
 uv sync
 Copy-Item .env.example .env
+uv run python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+若要啟用本機語音，將 `.env` 中對應欄位改成以下設定，並以剛產生的 64 字元密鑰取代 `TALKPATH_STT_API_KEY` 的佔位文字：
+
+```dotenv
+TALKPATH_TTS_BACKEND=local_http
+TALKPATH_TTS_BASE_URL=http://127.0.0.1:8880
+TALKPATH_TTS_MODEL=kokoro
+TALKPATH_TTS_PROTOCOL=openai_speech
+TALKPATH_TTS_SPEECH_PATH=/v1/audio/speech
+
+TALKPATH_STT_BACKEND=local_http
+TALKPATH_STT_BASE_URL=http://127.0.0.1:8765
+TALKPATH_STT_API_KEY=<上一步產生的密鑰>
+TALKPATH_STT_MODEL=qwen3-asr-0.6b
+TALKPATH_STT_PROTOCOL=openai_transcription
+TALKPATH_STT_TRANSCRIBE_PATH=/compat/openai/v1/audio/transcriptions
+```
+
+接著啟動 TTS／STT；`ps` 顯示兩個服務都為 `healthy` 後，再啟動 TalkPath：
+
+```powershell
+docker compose --env-file .env -f docker/compose.speech.yml up -d
+docker compose --env-file .env -f docker/compose.speech.yml ps
 uv run uvicorn talkpath.api.app:create_app --factory --host 127.0.0.1 --port 8001
 ```
 
-在瀏覽器開啟 `http://127.0.0.1:8001`。`.env.example` 預設使用 fake providers，可在沒有模型帳號的情況下體驗流程與執行測試；產生的內容是示範資料，不能當成真實課本辨識結果。
+在瀏覽器開啟 `http://127.0.0.1:8001`。首次啟動 STT 可能需要下載模型，步驟與檢查方式見 [本機語音服務](docs/SPEECH_SERVICES.md)。若只想先體驗不需語音模型的流程，可保留 `.env.example` 的 fake STT／TTS 設定，略過密鑰與 Docker Compose 步驟；Vision／Text 也預設為 fake providers，產生的是示範內容，並非真實課本辨識結果。
 
 ## 使用真實模型
 
-在未納入版本控制的 `.env` 設定 Vision、Text、STT、TTS provider。可用欄位及範例見 [.env.example](.env.example)。Vision／Text 可接 OpenAI 相容的 API；本機語音服務的 Docker Compose 設定與啟動方式見 [本機語音服務](docs/SPEECH_SERVICES.md)。
+在未納入版本控制的 `.env` 設定 Vision、Text、STT、TTS provider。可用欄位及範例見 [.env.example](.env.example)。Vision／Text 可接 OpenAI 相容的 API；本機語音服務的進一步設定與管理方式見 [本機語音服務](docs/SPEECH_SERVICES.md)。
 
 不要將 API 金鑰、語音密鑰、課本照片或小朋友的錄音提交到 Git。`.env`、上傳檔、課程資料、學習資料庫與日誌已列入 [.gitignore](.gitignore)。
 
