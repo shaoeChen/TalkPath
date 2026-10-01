@@ -112,6 +112,21 @@ async def test_fake_vocabulary_quiz_emits_mixed_question_types():
 
 
 @pytest.mark.asyncio
+async def test_fake_reading_aloud_uses_lesson_words_as_spoken_prompt():
+    lesson = await FakeVisionService().extract_lesson([], make_scope(), operation_id="lesson-op")
+
+    activity = await FakeTextService().generate_activity(
+        lesson, "reading_aloud", operation_id="reading-op"
+    )
+
+    assert activity.type == "reading_aloud"
+    assert activity.items
+    assert activity.items[0].prompt == lesson.passage.split(". ")[0] + "."
+    assert activity.items[0].choices == []
+    assert activity.items[0].answer == activity.items[0].prompt
+
+
+@pytest.mark.asyncio
 async def test_fake_speech_services_return_valid_deterministic_models(tmp_path):
     stt = FakeSpeechToTextService()
     tts = FakeTextToSpeechService()

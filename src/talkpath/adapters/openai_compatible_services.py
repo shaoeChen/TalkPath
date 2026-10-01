@@ -30,6 +30,7 @@ DEFAULT_OPENAI_TIMEOUT = 120.0
 
 _JSON_OUTPUT_INSTRUCTION = (
     "Return exactly one valid JSON object. Do not use Markdown fences or prose."
+    " Escape all double quotes and backslashes inside JSON string values according to JSON syntax."
     " All Chinese output MUST use Traditional Chinese (繁體／正體中文, zh-TW) exclusively. "
     "Never output Simplified Chinese or mix Simplified and Traditional characters. "
     "This applies to translations, vocabulary meanings, explanations, titles, instructions, "
@@ -68,7 +69,11 @@ _ACTIVITY_OUTPUT_INSTRUCTION = (
     "must contain 4 Chinese options including the correct meaning, and answer is the correct "
     "Chinese meaning. For dictation and meaning_to_word, choices is an empty list and answer is "
     "the English word. Mix question types so roughly half the items are dictation or "
-    "meaning_to_word and the rest are word_to_meaning or listen_to_meaning."
+    "meaning_to_word and the rest are word_to_meaning or listen_to_meaning. "
+    "For reading_aloud, each prompt must be a short English sentence or passage from "
+    "the lesson for the child to repeat aloud; answer must be exactly the same as prompt "
+    "and choices must be an empty list. Do not create dictation or multiple-choice questions "
+    "or ask the child to type."
 )
 _EVALUATION_OUTPUT_INSTRUCTION = (
     "Return a JSON object with correct as boolean, score as a number from 0 to 1, "
@@ -117,42 +122,71 @@ class _OpenAICompatibleChatService:
         if output_instruction:
             system_instruction += " " + output_instruction
 
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_instruction},
-                *messages,
-            ],
-            "response_format": {"type": "json_object"},
-        }
-        try:
-            response = await self._client.post(
-                self.endpoint,
-                json=payload,
-                headers=self._headers,
-                timeout=self.timeout,
-            )
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeout("openai-compatible provider timed out") from exc
-        except httpx.RequestError as exc:
-            raise ProviderUnavailable(
-                "openai-compatible provider request failed"
-            ) from exc
+        invalid_content: str | None = None
+        for attempt in range(2):
+            instruction = system_instruction
+            if attempt:
+                instruction += (
+                    " Correct the JSON syntax of your previous response."
+                    " Keep the same lesson content, scope and identifiers."
+                )
+            retry_messages = messages
+            if invalid_content is not None:
+                retry_messages = [
+                    *messages,
+                    {"role": "assistant", "content": invalid_content},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your previous response is invalid JSON. Return the full corrected"
+                            " JSON object only. Escape quotes and backslashes inside string"
+                            " values; preserve the original content and identifiers."
+                        ),
+                    },
+                ]
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": instruction},
+                    *retry_messages,
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            try:
+                response = await self._client.post(
+                    self.endpoint,
+                    json=payload,
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
+            except httpx.TimeoutException as exc:
+                raise ProviderTimeout("openai-compatible provider timed out") from exc
+            except httpx.RequestError as exc:
+                raise ProviderUnavailable(
+                    "openai-compatible provider request failed"
+                ) from exc
 
-        if not 200 <= response.status_code < 300:
-            raise ProviderUnavailable(
-                f"openai-compatible provider returned HTTP {response.status_code}"
-            )
+            if not 200 <= response.status_code < 300:
+                raise ProviderUnavailable(
+                    f"openai-compatible provider returned HTTP {response.status_code}"
+                )
 
-        try:
-            response_payload = response.json()
-        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
-            raise ProviderResponseInvalid(
-                "openai-compatible provider returned invalid JSON"
-            ) from exc
+            try:
+                response_payload = response.json()
+            except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError) as exc:
+                raise ProviderResponseInvalid(
+                    "openai-compatible provider returned invalid JSON"
+                ) from exc
 
-        content = self._extract_content(response_payload)
-        return self._parse_content(content)
+            content = self._extract_content(response_payload)
+            try:
+                return self._parse_content(content)
+            except ProviderResponseInvalid as exc:
+                if attempt or not isinstance(exc.__cause__, json.JSONDecodeError):
+                    raise
+                invalid_content = content
+
+        raise AssertionError("unreachable")
 
     @staticmethod
     def _extract_content(response_payload: Any) -> str:
@@ -399,6 +433,20 @@ class OpenAICompatibleTextService(_OpenAICompatibleChatService):
                 "openai-compatible activity response must be a JSON object"
             )
         payload = dict(payload)
+        if activity_type == "reading_aloud" and isinstance(payload.get("items"), list):
+            payload["title"] = "Reading / read aloud"
+            payload["instructions"] = "Listen, then read the sentence aloud."
+            items = []
+            for raw_item in payload["items"]:
+                if not isinstance(raw_item, dict) or not isinstance(
+                    raw_item.get("prompt"), str
+                ):
+                    raise ProviderResponseInvalid("reading aloud item requires a prompt")
+                prompt = raw_item["prompt"].strip()
+                if not prompt:
+                    raise ProviderResponseInvalid("reading aloud item requires a prompt")
+                items.append({**raw_item, "prompt": prompt, "choices": [], "answer": prompt})
+            payload["items"] = items
         self._set_identity(payload, "lesson_id", lesson.lesson_id, "activity")
         payload.setdefault("activity_id", f"{activity_type}-{operation_id}")
         payload.setdefault("type", activity_type)

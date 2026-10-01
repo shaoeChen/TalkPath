@@ -121,6 +121,22 @@ class FakeTextService:
             )
             instructions = "Listen to the word, then say it out loud."
             items = [item]
+        elif normalized_type == "reading_aloud":
+            passage = lesson.passage.strip()
+            sentence, separator, _ = passage.partition(".")
+            prompt = f"{sentence}." if separator else passage or word
+            items = [
+                Activity(
+                    activity_id=f"{normalized_type}-item-1",
+                    lesson_id=lesson.lesson_id,
+                    type="reading",
+                    prompt=prompt,
+                    choices=[],
+                    answer=prompt,
+                    source_content_ids=source_content_ids,
+                )
+            ]
+            instructions = "Listen, then read the sentence aloud."
         elif normalized_type == "vocabulary_quiz":
             # Vocabulary quiz mixes teacher-style assessment: dictation,
             # Chinese-to-English spelling, and meaning recognition.

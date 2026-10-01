@@ -2,7 +2,31 @@
 
 > 本文件只記錄「已完成」的工作。進行中的工作見 `PROGRESS.md`。以下內容由舊版 `PROGRESS.md` 原樣遷入（2026-09-30），其中「目前執行位置」「下一個開發起點」等描述為遷入當時的快照，現行狀態以 `PROGRESS.md` 為準。
 
-更新日期：2026-09-30
+更新日期：2026-10-01
+
+## 2026-10-01 Reading / read aloud 改為聽音跟讀
+
+- 來源：`docs/superpowers/plans/2026-10-01-reading-aloud.md`；規格：`docs/superpowers/specs/2026-10-01-reading-aloud-design.md`。使用者確認目標是孩子跟讀畫面題目，轉錄文字一致即通過，不評估腔調或韻律。
+- 原因：原本 `reading_aloud` 只有播放題目音訊，仍走一般選擇／打字作答；沒有錄音作答與朗讀專屬評分。模型也沒有朗讀題型指令，可能產生聽寫文案。
+- 修正：題目改為可朗讀的英文文字，朗讀活動只顯示錄音入口；STT 有文字才送出，後端以畫面題目文字本機比對，忽略大小寫、標點與多餘空白。模型回傳的朗讀選項、答案與聽寫文案會被覆寫；換題沿用當前題目音訊更新與重試。fake provider 改為課文句子供離線測試。
+- 驗證：後端與 provider 先寫失敗測試再修正；`uv run pytest tests/unit/test_activity_service.py tests/unit/test_fake_services.py tests/unit/test_openai_compatible_services.py tests/api/test_activity_flow.py tests/api/test_static_ui.py -q` → 102 passed、1 個既有 Starlette 棄用警告；`node --test frontend/test/*.test.cjs` → 15 passed；`node --check frontend/app.js`、`git diff --check` 通過。未以真實麥克風與語音服務做人工試聽。
+
+## 2026-10-01 聽力換題音訊同步修正
+
+- 來源：使用者回報完成第一題後，第二題仍播放第一題發音（簡單修正，未另展開實作計畫）。
+- 原因：活動開始時只以 `items[0].prompt` 產生音訊，換題只重繪題目，活動播放器未更新。
+- 修正：依目前題目佇列取得音訊；手動／自動換題先停止並移除舊播放器，顯示載入狀態；延遲回傳須通過請求、活動、題號、session 與導覽狀態檢查。失敗保留當前題目，重試當前題音訊。同一流程涵蓋聽力練習、聽力測驗與朗讀。
+- 驗證：新增回歸測試先觀察到 6 項預期失敗；修正後 `node --test frontend/test/*.test.cjs` → 11 passed（含 8 項音訊行為測試）；`uv run pytest tests/api/test_static_ui.py tests/api/test_activity_flow.py -q` → 53 passed、1 個既有 Starlette 棄用警告；`node --check frontend/app.js`、`git diff --check` 通過；獨立程式碼審查未發現重要問題。
+- 本機確認：`http://127.0.0.1:8001/app.js` 與更新後檔案一致；重新整理頁面即可載入修正。驗證使用模擬 DOM／音訊回應，未進行真實 TTS 揚聲器試聽。
+
+## 2026-10-01 OpenAI 相容模型 JSON 回應解析錯誤修正
+
+- 來源：`docs/superpowers/plans/2026-10-01-openai-json-response.md`；規格：`docs/superpowers/specs/2026-10-01-openai-json-response-design.md`。
+- 原因：使用保留的匯入圖片重現 Z.ai `glm-4.6v` 回傳未跳脫雙引號的英文例句；HTTP 200、`finish_reason=stop`，內容第 61 行第 27 欄無法解析為 JSON。
+- 修正：JSON 提示詞明確要求字串引號與反斜線跳脫；僅內容 JSON 語法錯誤時帶上無效回應與修正指示，最多重試一次。維持 JSON、schema 與身分嚴格驗證。
+- 驗證：回歸測試先觀察到 2 例預期失敗，修正後 OpenAI 相容服務 20 passed；`tests/unit tests/integration tests/api` 共 370 passed、5 skipped、1 個既有 Starlette 警告；`git diff --check` 通過。實際供應商重新請求時也觀察到 JSON 有效的回應，但因 `scope` 或 `operation_id` 不符而被既有驗證拒絕，故未證實圖片匯入端到端成功。
+- 限制：模型連續兩次輸出無效 JSON 仍會報錯；重試會增加一次模型請求。課程身分欄位不符屬另外觀察到的問題，未納入本次修正。
+- 部署驗證：重新啟動本機 API `127.0.0.1:8001`，`GET /health` 與 `/health/providers` 均為 HTTP 200；新行程日誌顯示啟動完成。
 
 ## 2026-09-30 公開庫敏感資訊清查與遮罩
 

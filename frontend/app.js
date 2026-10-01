@@ -52,6 +52,7 @@
     scopeOwner: null,
     importOwner: null,
     activityOwner: null,
+    activityAudioOwner: null,
     answerOwner: null,
     speechOwner: null,
     speechRecorder: null,
@@ -256,6 +257,9 @@
   }
 
   function invalidatePracticeAttempt() {
+    state.activityAudioOwner = null;
+    const player = $("#practice-body .activity-audio-player");
+    if (player) player.pause();
     state.answerOwner = null;
     state.speechOwner = null;
     const recorder = state.speechRecorder;
@@ -878,8 +882,7 @@
     openWordWall();
   }
 
-  function showAudioFallback(definition, errorMessage) {
-    const body = $("#practice-body");
+  function showAudioFallback(definition, errorMessage, body = $("#practice-body"), retryAction = () => generateActivity(definition)) {
     if (!body) return;
     body.replaceChildren();
     const fallback = document.createElement("div");
@@ -894,7 +897,7 @@
     retry.className = "secondary-button";
     retry.type = "button";
     retry.textContent = "Retry audio activity";
-    retry.addEventListener("click", () => generateActivity(definition));
+    retry.addEventListener("click", retryAction);
     fallback.append(title, message, alternative, retry);
     body.append(fallback);
   }
@@ -954,9 +957,9 @@
     body.append(player);
   }
 
-  async function requestActivityAudio(activity, sessionId) {
-    const prompt = activity && Array.isArray(activity.items) && activity.items[0]
-      ? activity.items[0].prompt
+  async function requestActivityAudio(activity, sessionId, itemIndex = 0) {
+    const prompt = activity && Array.isArray(activity.items) && activity.items[itemIndex]
+      ? activity.items[itemIndex].prompt
       : activity && activity.instructions;
     if (!prompt) return null;
     try {
@@ -970,6 +973,33 @@
       });
     } catch (error) {
       return { status: error.status || "unavailable", message: error.message || "Audio is unavailable." };
+    }
+  }
+  async function refreshActivityAudio(activity) {
+    const definition = activityDefinitions.find((item) => item.type === activity.type) || {};
+    const area = $("#practice-body .activity-audio-area");
+    if (!definition.audio || !area) return;
+    const player = area.querySelector("audio");
+    if (player) player.pause();
+    area.replaceChildren();
+    const loading = document.createElement("p");
+    loading.textContent = "Preparing audio…";
+    area.append(loading);
+    const generation = state.flowGeneration;
+    const sessionId = state.sessionId;
+    const navigationEpoch = state.navigationEpoch;
+    const questionIndex = state.currentQuestionIndex;
+    const owner = Symbol("activity-audio");
+    state.activityAudioOwner = owner;
+    const result = await requestActivityAudio(activity, sessionId, state.practiceQueue[questionIndex]);
+    if (!ownsRequest("activityAudioOwner", owner, generation, sessionId, navigationEpoch)
+      || state.activity !== activity || state.currentQuestionIndex !== questionIndex) return;
+    area.replaceChildren();
+    const message = audioFallbackMessage(activity, result, definition);
+    if (message) {
+      showAudioFallback(definition, message, area, () => refreshActivityAudio(activity));
+    } else {
+      appendAudioPlayer(area, result);
     }
   }
   async function playPracticeWord(word, feedback, onUnavailable) {
@@ -1083,6 +1113,7 @@
     const question = document.createElement("article");
     question.className = "practice-question";
     const isVocabularyPractice = activity.type === "vocabulary_practice";
+    const isReadingAloud = activity.type === "reading_aloud";
     const isQuiz = activity.type === "vocabulary_quiz";
     const questionType = isQuiz ? (item.question_type || "") : "";
     const prompt = document.createElement("h4");
@@ -1103,15 +1134,18 @@
     }
     let readAnswer;
     let speechFeedback = null;
-    if (isVocabularyPractice) {
+    if (isVocabularyPractice || isReadingAloud) {
       const controls = document.createElement("div");
       controls.className = "practice-speech-actions";
-      const listen = document.createElement("button");
-      listen.className = "secondary-button listen-button";
-      listen.type = "button";
-      listen.textContent = "Listen";
-      listen.setAttribute("aria-label", "Hear the word");
-      listen.addEventListener("click", () => playPracticeWord(item.prompt, feedback));
+      if (isVocabularyPractice) {
+        const listen = document.createElement("button");
+        listen.className = "secondary-button listen-button";
+        listen.type = "button";
+        listen.textContent = "Listen";
+        listen.setAttribute("aria-label", "Hear the word");
+        listen.addEventListener("click", () => playPracticeWord(item.prompt, feedback));
+        controls.append(listen);
+      }
       const record = document.createElement("button");
       record.className = "secondary-button speech-button";
       record.type = "button";
@@ -1126,7 +1160,7 @@
           submitActivityAnswer(activity, item, () => state.practiceTranscript, feedback, record);
         });
       });
-      controls.append(listen, record, recordFeedback);
+      controls.append(record, recordFeedback);
       question.append(controls);
       readAnswer = () => state.practiceTranscript;
     } else {
@@ -1211,7 +1245,7 @@
     actions.className = "practice-actions";
     if (state.practiceAnswered) {
       renderPracticeResultActions(activity, actions);
-    } else if (!isVocabularyPractice) {
+    } else if (!isVocabularyPractice && !isReadingAloud) {
       const check = document.createElement("button");
       check.className = "primary-button answer-button";
       check.type = "button";
@@ -1276,6 +1310,7 @@
       state.practiceCorrection = "";
       renderPracticeProgress(activity);
       renderPracticeQuestion(activity);
+      refreshActivityAudio(activity);
     }
   }
 
@@ -1360,7 +1395,7 @@
     }
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function"
       || typeof window.MediaRecorder !== "function") {
-      feedback.textContent = "Recording is not available here. Read the sentence aloud as a text alternative.";
+      feedback.textContent = "Recording is not available here. Try again in a browser with microphone access.";
       return;
     }
     const generation = state.flowGeneration;
@@ -1405,7 +1440,7 @@
           if (onTranscript) onTranscript(transcript);
         } catch (error) {
           if (!ownsRequest("speechOwner", speechOwner, generation, sessionId, navigationEpoch)) return;
-          feedback.textContent = error.message || "The speech helper is unavailable. Use the text alternative instead.";
+          feedback.textContent = error.message || "The speech helper is unavailable. Please try recording again.";
         } finally {
           if (ownsRequest("speechOwner", speechOwner, generation, sessionId, navigationEpoch)) {
             button.disabled = false;
@@ -1423,7 +1458,7 @@
     } catch (_error) {
       if (stream) stream.getTracks().forEach((track) => track.stop());
       if (!ownsRequest("speechOwner", speechOwner, generation, sessionId, navigationEpoch)) return;
-      feedback.textContent = "Your microphone could not be opened. Use the text alternative instead.";
+      feedback.textContent = "Your microphone could not be opened. Please check microphone access and try again.";
       button.disabled = false;
       state.speechOwner = null;
     }
@@ -1434,11 +1469,14 @@
     const definition = activityDefinitions.find((item) => item.type === activity.type) || {};
     setText("#practice-title", activity.title || definition.title || "Let's practise");
     body.replaceChildren();
+    const audioArea = document.createElement("div");
+    audioArea.className = "activity-audio-area";
+    if (definition.audio) body.append(audioArea);
     const audioMessage = audioFallbackMessage(activity, audioResult, definition);
     if (audioMessage) {
-      showAudioFallback(definition, audioMessage);
+      showAudioFallback(definition, audioMessage, audioArea, () => refreshActivityAudio(activity));
     } else {
-      appendAudioPlayer(body, audioResult);
+      appendAudioPlayer(audioArea, audioResult);
     }
     const instructions = document.createElement("p");
     instructions.className = "activity-instructions";

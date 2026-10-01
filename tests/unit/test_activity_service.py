@@ -485,6 +485,63 @@ async def test_vocabulary_practice_accepts_punctuated_asr_transcript(
 
 
 @pytest.mark.asyncio
+async def test_reading_aloud_compares_transcript_with_visible_prompt_locally(
+    tmp_path: Path,
+) -> None:
+    class MisleadingReadingTextService(CountingTextService):
+        async def generate_activity(self, lesson, activity_type, *, operation_id):
+            draft = await super().generate_activity(
+                lesson, activity_type, operation_id=operation_id
+            )
+            item = draft.items[0].model_copy(
+                update={
+                    "prompt": "I like apples, too.",
+                    "choices": ["wrong option"],
+                    "answer": "wrong answer",
+                }
+            )
+            return draft.model_copy(update={"items": [item]})
+
+    lesson = make_lesson()
+    lesson_repository = LessonLensMarkdownRepository(tmp_path / "lessonlens")
+    lesson_repository.save_lesson_draft(lesson)
+    progress_repository = SQLiteProgressRepository(tmp_path / "progress.sqlite")
+    session = progress_repository.create_session("local-child", lesson.lesson_id)
+    text_service = MisleadingReadingTextService()
+    service = ActivityService(
+        progress_repository=progress_repository,
+        lesson_repository=lesson_repository,
+        text_service=text_service,
+    )
+    activity = await service.generate_activity(
+        session.session_id,
+        activity_type="reading_aloud",
+        operation_id="generate-reading",
+    )
+    item = activity.items[0]
+
+    passed = await service.answer(
+        session.session_id,
+        activity.activity_id,
+        item_id=item.activity_id,
+        answer="  i like APPLES too! ",
+        operation_id="answer-reading-pass",
+    )
+    missed = await service.answer(
+        session.session_id,
+        activity.activity_id,
+        item_id=item.activity_id,
+        answer="I like bananas, too.",
+        operation_id="answer-reading-miss",
+    )
+
+    assert passed.evaluation.correct is True
+    assert missed.evaluation.correct is False
+    assert passed.evaluation.expected_answer == item.prompt
+    assert text_service.evaluate_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_text_answer_still_uses_text_provider_for_evaluation(
     tmp_path: Path,
 ) -> None:

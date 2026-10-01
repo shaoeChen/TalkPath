@@ -346,6 +346,79 @@ async def test_openai_response_accepts_single_json_fence():
 
 
 @pytest.mark.asyncio
+async def test_vision_retries_once_after_malformed_json_content():
+    scope = _scope()
+    requests: list[dict[str, object]] = []
+    responses = [
+        '{"title": "When "I" means "me""}',
+        json.dumps(_lesson_payload(scope)),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": responses[len(requests) - 1]}}]},
+        )
+
+    service = OpenAICompatibleVisionService(
+        "https://vision.example", client=_client(handler)
+    )
+    draft = await service.extract_lesson([], scope, operation_id="retry-operation")
+
+    assert draft.title == "A Day at School"
+    assert len(requests) == 2
+    assert requests[1]["messages"][-1]["role"] == "user"
+    assert requests[1]["messages"][-2] == {
+        "role": "assistant",
+        "content": responses[0],
+    }
+    assert "escape" in requests[1]["messages"][-1]["content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_vision_stops_after_one_json_content_retry():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"title": "When "I""}'}}]},
+        )
+
+    service = OpenAICompatibleVisionService(
+        "https://vision.example", client=_client(handler)
+    )
+    with pytest.raises(ProviderResponseInvalid, match="not valid JSON"):
+        await service.extract_lesson([], _scope(), operation_id="invalid-retry")
+    assert len(requests) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"choices": [{"message": {"content": "{}"}}]},
+        {"choices": []},
+    ],
+)
+async def test_vision_does_not_retry_valid_json_or_missing_choices(response):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=response)
+
+    service = OpenAICompatibleVisionService(
+        "https://vision.example", client=_client(handler)
+    )
+    with pytest.raises(ProviderResponseInvalid):
+        await service.extract_lesson([], _scope(), operation_id="no-retry")
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "response",
     [
@@ -456,3 +529,43 @@ def test_activity_output_instruction_specifies_vocabulary_quiz_question_types() 
     assert "meaning_to_word" in _ACTIVITY_OUTPUT_INSTRUCTION
     assert "word_to_meaning" in _ACTIVITY_OUTPUT_INSTRUCTION
     assert "listen_to_meaning" in _ACTIVITY_OUTPUT_INSTRUCTION
+
+
+def test_activity_output_instruction_specifies_reading_aloud_prompt_contract() -> None:
+    assert "For reading_aloud" in _ACTIVITY_OUTPUT_INSTRUCTION
+    assert "answer must be exactly the same as prompt" in _ACTIVITY_OUTPUT_INSTRUCTION
+    assert "choices must be an empty list" in _ACTIVITY_OUTPUT_INSTRUCTION
+    assert "Do not create dictation or multiple-choice questions" in _ACTIVITY_OUTPUT_INSTRUCTION
+
+
+@pytest.mark.asyncio
+async def test_reading_aloud_provider_items_use_prompt_as_only_spoken_answer() -> None:
+    lesson = LessonDraft(
+        **_lesson_payload(_scope()),
+        provider="fixture",
+        model="fixture-model",
+        operation_id="lesson-operation",
+    )
+    payload = _activity_payload(lesson.lesson_id)
+    payload["type"] = "reading_aloud"
+    payload["title"] = "Listening dictation"
+    payload["instructions"] = "Listen and write the answer."
+    payload["items"][0]["prompt"] = "I go to school every day."
+    payload["items"][0]["choices"] = ["school", "home"]
+    payload["items"][0]["answer"] = "school"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(payload)}}]},
+        )
+
+    service = OpenAICompatibleTextService("https://text.example/v1", client=_client(handler))
+    activity = await service.generate_activity(
+        lesson, "reading_aloud", operation_id="reading-operation"
+    )
+
+    assert activity.items[0].choices == []
+    assert activity.items[0].answer == activity.items[0].prompt
+    assert activity.title == "Reading / read aloud"
+    assert activity.instructions == "Listen, then read the sentence aloud."

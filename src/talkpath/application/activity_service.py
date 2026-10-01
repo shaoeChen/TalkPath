@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import time
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -59,6 +60,16 @@ def normalize_spoken_answer(text: str) -> str:
     return " ".join(
         (text or "").strip().casefold().strip(_SPOKEN_EDGE_PUNCTUATION).split()
     )
+
+
+def normalize_reading_answer(text: str) -> str:
+    """Compare recognized words without case, punctuation, or extra spacing."""
+    words = "".join(
+        char
+        for char in text.casefold()
+        if not unicodedata.category(char).startswith("P")
+    )
+    return " ".join(words.split())
 
 
 class ActivityServiceError(DomainError):
@@ -318,7 +329,18 @@ class ActivityService:
 
         started_at = time.perf_counter()
         try:
-            if item.choices or activity.type in {"vocabulary_practice", "vocabulary_quiz"}:
+            if activity.type == "reading_aloud":
+                expected = item.prompt
+                correct = normalize_reading_answer(answer) == normalize_reading_answer(
+                    expected
+                )
+                evaluation = AnswerEvaluation(
+                    correct=correct,
+                    score=1.0 if correct else 0.0,
+                    feedback="Great job!" if correct else "Try again.",
+                    expected_answer=expected,
+                )
+            elif item.choices or activity.type in {"vocabulary_practice", "vocabulary_quiz"}:
                 # Choice questions, vocabulary practice, and the vocabulary quiz
                 # have a standard answer (the word or meaning), so compare
                 # locally for instant feedback instead of waiting on the text provider.

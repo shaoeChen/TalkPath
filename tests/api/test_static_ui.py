@@ -273,7 +273,7 @@ def test_child_ui_activity_generation_ignores_stale_async_continuations() -> Non
         "  function resetForNewCourse()",
     )
 
-    assert "async function requestActivityAudio(activity, sessionId)" in request_audio
+    assert "async function requestActivityAudio(activity, sessionId, itemIndex = 0)" in request_audio
     assert "`/api/sessions/${sessionId}/speech/synthesize`" in request_audio
     before_audio, after_audio = generate_activity.split("const audioResult =", 1)
     # Resume path reuses the already generated activity for the same type
@@ -1563,7 +1563,7 @@ def test_child_ui_practice_wiring_removes_inline_panel_controls() -> None:
     assert '$("#close-activity")' not in script
     assert '"#activity-panel"' not in script
     assert '"#activity-error"' not in script
-    assert "function showAudioFallback(definition, errorMessage)" in script
+    assert 'function showAudioFallback(definition, errorMessage, body = $("#practice-body"),' in script
     assert '"#practice-body"' in script
     assert 'showError("#practice-error"' in reset_handler
     assert "clearTimeout(state.practiceAutoAdvance)" in reset_handler

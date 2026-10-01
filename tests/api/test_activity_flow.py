@@ -151,6 +151,52 @@ def test_vocabulary_practice_uses_word_cards_and_spoken_transcript_answer(
     assert payload["evaluation"]["feedback"] == "Great job!"
 
 
+def test_reading_aloud_public_flow_compares_spoken_words_and_saves_progress(
+    tmp_path: Path,
+) -> None:
+    client, _service = make_client(tmp_path)
+    session_id, _ = prepare_activity(client)
+    generated = client.post(
+        f"/api/sessions/{session_id}/activities/generate",
+        json={"operation_id": "generate-reading-flow", "activity_type": "reading_aloud"},
+    )
+    assert generated.status_code == 200
+    activity = generated.json()["activity"]
+    item = activity["items"][0]
+    assert item["prompt"] == "I go to school every day."
+    assert item["choices"] == []
+    assert "answer" not in item
+
+    wrong = client.post(
+        f"/api/sessions/{session_id}/activities/{activity['activity_id']}/answer",
+        json={
+            "operation_id": "reading-answer-wrong",
+            "item_id": item["activity_id"],
+            "answer": "I go to school every night.",
+        },
+    )
+    right = client.post(
+        f"/api/sessions/{session_id}/activities/{activity['activity_id']}/answer",
+        json={
+            "operation_id": "reading-answer-right",
+            "item_id": item["activity_id"],
+            "answer": "i go to school every day",
+        },
+    )
+
+    assert wrong.status_code == right.status_code == 200
+    assert wrong.json()["evaluation"]["passed"] is False
+    assert right.json()["evaluation"]["passed"] is True
+    assert "expected_answer" not in right.json()["evaluation"]
+    progress = client.get(f"/api/sessions/{session_id}/progress")
+    assert progress.status_code == 200
+    attempts = [
+        attempt for attempt in progress.json()["attempts"]
+        if attempt["activity_id"] == item["activity_id"]
+    ]
+    assert len(attempts) == 2
+
+
 def test_new_session_regenerating_saved_activity_returns_200_with_fresh_id(
     tmp_path: Path,
 ) -> None:
