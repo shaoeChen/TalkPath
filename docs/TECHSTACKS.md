@@ -2,7 +2,7 @@
 
 ## 後端
 - Python >= 3.12，套件管理與執行：`uv`
-- FastAPI、uvicorn（含 WebSocket）、httpx、pydantic-settings、pyyaml、python-multipart
+- FastAPI、uvicorn（含 WebSocket）、httpx、pydantic-settings、pyyaml、python-multipart、cryptography（區網 HTTPS 本機憑證）
 - 建置：hatchling
 
 ## 前端

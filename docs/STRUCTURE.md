@@ -25,6 +25,7 @@ docs/                所有文件（見下）
 | `docs/TECHSTACKS.md` | 技術棧 |
 | `docs/STRUCTURE.md` | 本文件 |
 | `docs/SPEECH_SERVICES.md` | 本機 TTS／STT Compose 啟停與設定 |
+| `docs/LAN_HTTPS.md` | 區網 HTTPS 啟動與憑證保存 |
 | `docs/talkpath-progress.md` | 產品定位、需求背景、架構決策 |
 | `docs/superpowers/specs/` | 設計規格 |
 | `docs/superpowers/plans/` | 實作計畫書 |

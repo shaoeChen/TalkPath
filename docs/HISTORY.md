@@ -2,7 +2,39 @@
 
 > 本文件只記錄「已完成」的工作。進行中的工作見 `PROGRESS.md`。以下內容由舊版 `PROGRESS.md` 原樣遷入（2026-09-30），其中「目前執行位置」「下一個開發起點」等描述為遷入當時的快照，現行狀態以 `PROGRESS.md` 為準。
 
-更新日期：2026-10-01
+更新日期：2026-10-02
+
+## 2026-10-02 修正提交前驗證與隱私清查
+
+- 來源：使用者要求提交全部修正，推送前確認隱私外洩風險。
+- 範圍：區網 HTTPS、Vision scope 等價格式修正、診斷文件與歷史路徑遮罩；保留另一台電腦實際麥克風診斷於 `PROGRESS.md`，不宣稱已完成。
+- 驗證：`uv run pytest` 為 416 passed、9 skipped，1 個既有 Starlette 棄用警告；前端 Node 測試 15 passed、Pi 測試 10 passed、TypeScript typecheck、`uv lock --check`、啟動入口 `--help` 與 `git diff --check` 通過。略過的測試不代表真實模型或外部整合已驗證。
+- 隱私清查：Gitleaks 8.30.1 掃描待提交的 139 個檔案與當時 `main` 的 8 個可達提交，均無密鑰告警；另比對本機環境設定中的 6 個憑證值，未命中。檢查未納入 `.env`、私鑰、資料庫、教材圖片、錄音與本機日誌；個人路徑及電子郵件檢查無命中，區網 IP 僅出現在明確的文件／測試範例。作者與提交者信箱均為 GitHub noreply。
+- 推送範圍：僅正式 `main` 分支；含舊敏感歷史的備份分支與 `refs/original/` 保留本機，不推送。掃描結果代表此檢查範圍未發現外洩，不構成所有格式與情境的絕對保證。
+
+## 2026-10-01 區網 8000 連線診斷
+
+- 來源：使用者已啟動服務，詢問 8000 連不上是否為防火牆問題。
+- 檢查：現行 TalkPath 行程以 `python -m talkpath.main --lan` 監聽 IPv4 `0.0.0.0:8000`；HTTP 請求空回應，HTTPS 首頁與 `/health` 回傳 200。Docker 的另一個容器同時發布 8000，WSL relay 監聽 `::1:8000`；`localhost` 的 IPv6 HTTP 請求回傳其他服務的 `Not Found`，IPv4 HTTPS 健康檢查正常。
+- 驗證：使用本機 CA、在 Windows curl 關閉撤銷檢查後，主機自身區網 IPv4 的 HTTPS 首頁回 200，IPv4 `localhost` 的 `/health` 回 `{"status":"ok"}`。原始 CA 驗證請求因 Schannel 無法確認撤銷狀態而失敗，未改動系統憑證信任。
+- 限制：網卡目前為 Public、防火牆啟用；讀取完整埠篩選規則遭權限拒絕，未從手機驗證，因此無法判定其他裝置入站是否被防火牆阻擋。診斷未修改防火牆、程式碼或既有服務；在 `LAN_HTTPS.md` 補上 HTTPS、IPv4 與手機網址排查說明。
+- 後續：使用者確認由另一台電腦以 HTTPS 連線，並指定改用曾成功分享的 8443。改以 Windows Firewall COM 介面讀取到目前 Public 預設阻擋入站，以及 `Python HTTPS 8443` 對所有網路類型放行 TCP 8443 的規則。啟動入口沒有 `--port` 參數；在獨立 PowerShell 設定 `TALKPATH_APP_PORT=8443` 後，實際呼叫設定載入器確認讀取為 8443，提供使用者自行重啟的命令。未替使用者重啟，也尚未驗證另一台電腦的連線。
+
+## 2026-10-01 Vision 匯入 scope 等價格式誤判修正
+
+- 來源：使用者提供教材照片並回報 `openai-compatible vision response scope does not match request`。診斷證據見 [Vision scope 診斷](diagnostics/2026-10-01-vision-scope.md)。
+- 真實重現：取得失敗 session 的原始 scope 後重測三次，其中一次模型漏掉可由課程範圍推導的 `scope.lesson_id`，其餘欄位一致；舊程式直接比較完整字典而拒絕等價範圍。
+- 修正：以原有 `CourseScope` 驗證器補齊預設欄位與推導 ID，再比較完整範圍；真實課程差異、非空頁碼缺失或格式無效仍拒絕。提示詞明確要求保留原始課程身分。
+- 驗證：回歸測試先觀察到 3 項預期失敗；相關 provider／匯入 API／同課追加／失敗恢復／日誌測試 67 passed、1 個既有 Starlette 棄用警告；保存的真實失敗回覆重播成功（11 個教材項目）；修正後真實照片呼叫成功（42.6 秒、9 個教材項目、scope 一致）。`git diff --check` 通過。
+- 本機服務：曾重啟 `127.0.0.1:8001` 載入修正，健康檢查回傳 `ok`；驗證後依使用者要求關閉 agent 啟動的背景服務，確認 8001 已無監聽，由使用者自行啟動。診斷未儲存課程，未進行完整人工瀏覽器流程。
+
+## 2026-10-01 區網 HTTPS 自動憑證
+
+- 使用者決定開源安裝環境各自產生憑證，手機端信任設定由安裝者處理。新增 `uv run python -m talkpath.main --lan`：偵測主機區網 IPv4、監聽 `0.0.0.0`，以 HTTPS 提供既有 FastAPI／前端，並顯示區網 URL 與 CA 憑證位置；多網卡環境可用 `--lan-ip` 補入位址。
+- 首次啟動在 Git 忽略的 `data/tls/` 建立本機 CA 與網站憑證；重啟重用，IP 變動、CA 更換或網站憑證將到期時重簽網站憑證。CA 憑證或私鑰單邊遺失、兩者不相符時停止，避免無聲更換。實驗性 Pi 模式會改以本機 HTTPS 呼叫 API，並將本機 CA 加入 Node 的額外信任憑證。原本本機啟動方式維持可用；TTS／STT Compose 設定不變。
+- 更新 `README.md`、`docs/LAN_HTTPS.md`、技術棧與結構文件；從 `IDEAS.md` 移除已完成的區網連線需求。
+- 驗證：區網憑證與啟動入口的測試先紅後綠；`uv run pytest -q` 404 passed、9 skipped、1 個既有 Starlette 棄用警告；`node --test frontend/test/*.test.cjs` 15 passed；以臨時憑證啟動 Uvicorn，Python HTTPS 用戶端與載入本機 CA 的 Node `fetch` 請求 `/health` 均回 200；`uv run python -m talkpath.main --help` 與 `git diff --check` 通過。
+- 限制：未在實際手機上驗證憑證信任與麥克風授權；使用者須自行完成手機信任設定與主機防火牆設定。目前區網模式沒有使用者帳號或存取控制，僅供可信任區網。
 
 ## 2026-10-01 Reading / read aloud 改為聽音跟讀
 

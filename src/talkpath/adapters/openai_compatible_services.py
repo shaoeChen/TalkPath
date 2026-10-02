@@ -42,6 +42,9 @@ _JSON_OUTPUT_INSTRUCTION = (
 _VISION_OUTPUT_INSTRUCTION = (
     "For lesson extraction, return a JSON object with lesson_id, scope, title, passage, "
     "content_items, source_images, extraction_status, and operation_id. "
+    "Copy lesson_id from the supplied scope and operation_id from the request; "
+    "echo the supplied scope unchanged, including its lesson_id and null fields. "
+    "Do not infer or change course metadata from the image. "
     "title and passage must be strings (passage may be an empty string). "
     "extraction_status must be exactly one of: draft, reviewed, published. "
     "Each content_items entry must be a JSON object with content_id (string), type "
@@ -313,7 +316,7 @@ class OpenAICompatibleVisionService(_OpenAICompatibleChatService):
             )
         payload = dict(payload)
         self._set_identity(payload, "lesson_id", scope.lesson_id, "vision")
-        self._set_identity(payload, "scope", scope.model_dump(mode="json"), "vision")
+        self._set_scope_identity(payload, scope)
         payload["source_images"] = [image.image_id for image in images]
         payload["provider"] = "openai_compatible"
         payload["model"] = self.model
@@ -321,6 +324,21 @@ class OpenAICompatibleVisionService(_OpenAICompatibleChatService):
         payload["operation_id"] = operation_id
         self._normalize_vision_payload(payload)
         return self._validated(LessonDraft, payload, "vision")
+
+    @staticmethod
+    def _set_scope_identity(payload: dict[str, Any], expected: CourseScope) -> None:
+        if "scope" in payload:
+            try:
+                actual = CourseScope.model_validate(payload["scope"])
+            except (ValidationError, TypeError, ValueError) as exc:
+                raise ProviderResponseInvalid(
+                    "openai-compatible vision response scope does not match request"
+                ) from exc
+            if actual != expected:
+                raise ProviderResponseInvalid(
+                    "openai-compatible vision response scope does not match request"
+                )
+        payload["scope"] = expected.model_dump(mode="json")
 
     @staticmethod
     def _normalize_vision_payload(payload: dict[str, Any]) -> None:

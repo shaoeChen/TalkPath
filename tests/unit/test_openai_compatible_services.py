@@ -127,6 +127,7 @@ async def test_vision_sends_scope_and_image_data_url_and_parses_lesson(tmp_path)
     assert "lesson_id" in body["messages"][0]["content"]
     assert "content_id" in body["messages"][0]["content"]
     assert "extraction_status" in body["messages"][0]["content"]
+    assert "echo the supplied scope unchanged" in body["messages"][0]["content"]
     user_content = body["messages"][-1]["content"]
     scope_message = json.loads(user_content[0]["text"])
     assert scope_message["scope"]["lesson_id"] == scope.lesson_id
@@ -521,6 +522,82 @@ async def test_vision_rejects_operation_identity_mismatch(tmp_path):
 
     with pytest.raises(ProviderResponseInvalid, match="operation_id"):
         await service.extract_lesson([], scope, operation_id="requested-operation")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("omitted", [("textbook", "edition"), ("lesson_id",), ("pages",)])
+async def test_vision_accepts_scope_with_omitted_default_fields(omitted):
+    scope = _scope()
+    payload = _lesson_payload(scope)
+    for field in omitted:
+        payload["scope"].pop(field)
+    assert CourseScope.model_validate(payload["scope"]) == scope
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(payload)}}]}
+        )
+
+    async with _client(handler) as client:
+        service = OpenAICompatibleVisionService("https://vision.example", client=client)
+        draft = await service.extract_lesson([], scope, operation_id="scope-defaults")
+    assert draft.scope == scope
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field, value",
+    [("grade", "8"), ("lesson", "2"), ("pages", ["13"]), ("textbook", "another book")],
+)
+async def test_vision_rejects_actual_scope_changes(field, value):
+    scope = _scope()
+    payload = _lesson_payload(scope)
+    payload["scope"][field] = value
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(payload)}}]}
+        )
+
+    async with _client(handler) as client:
+        service = OpenAICompatibleVisionService("https://vision.example", client=client)
+        with pytest.raises(ProviderResponseInvalid, match="scope"):
+            await service.extract_lesson([], scope, operation_id="scope-mismatch")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("returned_scope", [None, [], {}, {"program": "junior high"}])
+async def test_vision_rejects_malformed_scope(returned_scope):
+    scope = _scope()
+    payload = _lesson_payload(scope)
+    payload["scope"] = returned_scope
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(payload)}}]}
+        )
+
+    async with _client(handler) as client:
+        service = OpenAICompatibleVisionService("https://vision.example", client=client)
+        with pytest.raises(ProviderResponseInvalid, match="scope"):
+            await service.extract_lesson([], scope, operation_id="scope-malformed")
+
+
+@pytest.mark.asyncio
+async def test_vision_rejects_omitted_requested_pages():
+    scope = _scope().model_copy(update={"pages": ["12"]})
+    payload = _lesson_payload(scope)
+    payload["scope"].pop("pages")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(payload)}}]}
+        )
+
+    async with _client(handler) as client:
+        service = OpenAICompatibleVisionService("https://vision.example", client=client)
+        with pytest.raises(ProviderResponseInvalid, match="scope"):
+            await service.extract_lesson([], scope, operation_id="scope-missing-pages")
 
 
 def test_activity_output_instruction_specifies_vocabulary_quiz_question_types() -> None:

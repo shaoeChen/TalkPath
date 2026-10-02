@@ -90,14 +90,14 @@ Python 測試曾受到使用者層級 `uv` cache 權限影響，改用專案內 
 
 - 本輪已確認目前工作區為使用者指定的正式路徑：D:/python/TalkPath。
 - Python 全量測試、LessonLens activity persistence 聚焦測試、Pi TypeScript 測試、TypeScript typecheck 與 JavaScript syntax check 均在此工作區完成。
-- C:/Users/<user>/Documents/Codex/2026-08-10/d-python 為歷史副本；後續以 D:/python/TalkPath 為唯一交接與開發起點，避免兩份工作區分叉。
+- <舊工作目錄> 為歷史副本；後續以 D:/python/TalkPath 為唯一交接與開發起點，避免兩份工作區分叉。
 ## 6. 交接時的路徑注意事項
 
 使用者原始要求與目前實際工作區都是：
 
 D:/python/TalkPath
 
-本輪已直接從該工作區讀取並驗證程式、測試與進度文件。歷史副本 C:/Users/<user>/Documents/Codex/2026-08-10/d-python 仍存在，但不再作為本次交接的活動工作區；後續執行者應以 D:/python/TalkPath 為準。
+本輪已直接從該工作區讀取並驗證程式、測試與進度文件。歷史副本 <舊工作目錄> 仍存在，但不再作為本次交接的活動工作區；後續執行者應以 D:/python/TalkPath 為準。
 ## 7. Task 10 本次執行狀態（2026-08-11）
 
 ### 已完成

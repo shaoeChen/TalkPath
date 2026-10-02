@@ -41,6 +41,16 @@ uv run uvicorn talkpath.api.app:create_app --factory --host 127.0.0.1 --port 800
 
 在瀏覽器開啟 `http://127.0.0.1:8001`。首次啟動 STT 可能需要下載模型，步驟與檢查方式見 [本機語音服務](docs/SPEECH_SERVICES.md)。若只想先體驗不需語音模型的流程，可保留 `.env.example` 的 fake STT／TTS 設定，略過密鑰與 Docker Compose 步驟；Vision／Text 也預設為 fake providers，產生的是示範內容，並非真實課本辨識結果。
 
+### 用手機在區網操作
+
+完成上述安裝及語音服務設定後，以區網 HTTPS 模式啟動 TalkPath：
+
+```powershell
+uv run python -m talkpath.main --lan
+```
+
+啟動時會顯示 `https://<主機區網 IP>:8000` 及此安裝環境的 CA 憑證檔案位置。TalkPath 會自動建立並重用憑證；手機安裝及信任 CA、手機與主機位於同一區網，以及必要的主機防火牆設定，均由使用者自行處理。多網卡主機若漏掉需要的 IP，可加 `--lan-ip <區網 IP>`。詳見 [區網 HTTPS 說明](docs/LAN_HTTPS.md)。
+
 ## 使用真實模型
 
 在未納入版本控制的 `.env` 設定 Vision、Text、STT、TTS provider。可用欄位及範例見 [.env.example](.env.example)。Vision／Text 可接 OpenAI 相容的 API；本機語音服務的進一步設定與管理方式見 [本機語音服務](docs/SPEECH_SERVICES.md)。
