@@ -4,14 +4,15 @@
 
 ## 目前執行項目
 
-## 另一台電腦錄音失敗診斷
-- 來源：使用者回報透過區網 HTTPS 從另一台電腦錄音失敗。
-- 更新日期：2026-10-01
-- 已完成的子項：確認 TalkPath 在 8443 監聽、STT／TTS 容器 healthy；近期三筆錄音均完成解碼但 VAD 偵測為 0 個語音段；合成語音轉 WebM 的真實轉錄成功，合成靜音回空字串。證據見 [區網錄音診斷](diagnostics/2026-10-01-lan-recording.md)。
-- 未完成的子項：在另一台電腦確認麥克風來源、靜音、輸入音量與畫面錯誤；若正常收音仍失敗，再判別 VAD 漏判。
-- 驗證結果：HTTPS `/health/providers` 回 200，STT 模型 ready；真實 WebM 測試轉錄為 `Hello world, this is a microphone test.`。未驗證另一台電腦的實際麥克風。
-- 已知問題／阻塞：無法直接控制另一台電腦；原錄音暫存已清除，不能量測音量。已詢問用戶端瀏覽器與錯誤資訊，尚未收到。
-- 下一步起點：確認用戶端預設麥克風在系統測試中有正常收音，再以同一裝置重試 TalkPath 錄音。
+## 既有課程新增頁面的人工瀏覽器驗收
+- 來源：`docs/superpowers/plans/2026-10-02-lesson-add-pages-background-implementation.md`。
+- 更新日期：2026-10-02。
+- 執行位置：正式 `D:\python\TalkPath` 的 main，功能提交 `6e5af10` 已整合；程式與自動化驗證完成記錄見 HISTORY。
+- 未完成的子項：AC13 真實瀏覽器操作；人工 fake server 重啟與頁碼警示畫面驗收。
+- 驗證結果：自動化 Python 457 passed／9 skipped、前端 32 passed、Pi 10 passed；需求覆蓋及 fake／人工界線見 `docs/diagnostics/2026-10-02-page-import-validation.md`。
+- 使用者實測追蹤：回報課程詳情照片顯示 Waiting；讀取正式 SQLite 與 HTTPS API，該批已 completed（7 張中 6 成功，22 頁失敗，queued／running 均 0），建立至完成約 5 分鐘。伺服器提供的兩個 JavaScript 檔與正式磁碟一致；尚未觀察使用者刷新後畫面，不能判定瀏覽器即時更新是否異常。
+- 已知問題／阻塞：瀏覽器工具清單為空，開啟 iab 回覆 Browser is not available，真實瀏覽器驗收尚未執行；不把 fake DOM 測試當作人工瀏覽器驗收。
+- 下一步起點：重啟正式服務並重新整理前端；My lessons → View lesson → Add pages，以非重複頁碼選多張照片，驗證返回列表、完成 MESSAGE、詳情追加；中途關閉頁面後重開、單頁 Retry 與 Cancel／Add anyway。真實模型不一定會失敗，固定失敗頁情境應另用隔離 fake provider，不改正式模型設定。
 
 <!-- 有工作時，依下列格式記錄：
 ## <工作名稱>
