@@ -208,6 +208,7 @@ class SessionService:
         )
         self._subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = defaultdict(set)
         self._operation_lock = asyncio.Lock()
+        self._import_locks: dict[str, asyncio.Lock] = {}
 
     async def aclose(self) -> None:
         """Close an injected Pi/provider boundary when it owns resources."""
@@ -337,19 +338,19 @@ class SessionService:
         if not operation_id.strip():
             raise OperationConflict("operation_id cannot be blank")
         key = (session_id, operation_id)
-        async with self._operation_lock:
+        async with self._import_locks.setdefault(session_id, asyncio.Lock()):
             existing = self._imports.get(key)
             if existing is not None:
                 return existing
 
-            session = self.get_session(session_id)
+            session = await asyncio.to_thread(self.get_session, session_id)
             scope = self._scopes.get(session_id)
             if not session.scope_confirmed or scope is None:
                 raise ScopeNotConfirmed(session.state, SessionState.EXTRACTING)
             if not session.source_images:
                 raise UploadValidationError("at least one textbook image is required")
             if session.state is not SessionState.CONFIRM_COURSE_SCOPE:
-                lesson = self.lesson_repository.get_lesson(scope.lesson_id)
+                lesson = await asyncio.to_thread(self.lesson_repository.get_lesson, scope.lesson_id)
                 if lesson is not None and session.state in {
                     SessionState.ASK_GENERATE_ACTIVITY,
                     SessionState.READY_FOR_PRACTICE,
@@ -360,10 +361,10 @@ class SessionService:
                 raise InvalidStateTransition(session.state, SessionState.EXTRACTING)
 
             try:
-                trusted_images = self.validate_image_references(
-                    session_id, session.source_images
+                trusted_images = await asyncio.to_thread(
+                    self.validate_image_references, session_id, session.source_images
                 )
-                session = self._transition_and_save(session, SessionState.EXTRACTING, "extracting")
+                session = await self._transition_and_save_async(session, SessionState.EXTRACTING, "extracting")
                 if self.agent_backend == "direct":
                     stage = "vision"
                     draft = await self.vision_service.extract_lesson(
@@ -382,17 +383,25 @@ class SessionService:
                     )
                 stage = "identity"
                 self._validate_draft_identity(draft, scope, operation_id)
-                session = self._transition_and_save(
+                session = await self._transition_and_save_async(
                     session, SessionState.PREVIEW_DRAFT, "draft_ready"
                 )
-                session = self._transition_and_save(
+                session = await self._transition_and_save_async(
                     session, SessionState.SAVE_LESSON, "saving_lesson"
                 )
                 stage = "save"
-                saved = self._save_lesson_draft(
-                    draft, trusted_images, session_id=session_id
-                )
-                session = self._transition_and_save(
+                publishing = asyncio.create_task(asyncio.to_thread(
+                    self._persist_lesson_draft, draft, trusted_images
+                ))
+                try:
+                    saved = await asyncio.shield(publishing)
+                except asyncio.CancelledError:
+                    # A thread cannot be cancelled. Finish publication before
+                    # the worker reconciles its durable state during shutdown.
+                    await publishing
+                    raise
+                self._follow_saved_scope(session_id, saved)
+                session = await self._transition_and_save_async(
                     session,
                     SessionState.ASK_GENERATE_ACTIVITY,
                     "ready_to_generate_activity",
@@ -400,7 +409,7 @@ class SessionService:
                 result = ImportResult(
                     session=session,
                     lesson=saved,
-                    skipped_duplicates=self._skipped_duplicates(saved, operation_id),
+                    skipped_duplicates=await asyncio.to_thread(self._skipped_duplicates, saved, operation_id),
                 )
                 self._imports[key] = result
                 return result
@@ -414,7 +423,7 @@ class SessionService:
                     started_at=started_at,
                     error=exc,
                 )
-                self._mark_failed(session_id, "lesson import failed")
+                await self._mark_failed_async(session_id, "lesson import failed")
                 if isinstance(exc, DomainError):
                     raise
                 raise OperationFailed("lesson import failed") from exc
@@ -903,6 +912,33 @@ class SessionService:
         self._publish(updated, event_type)
         return updated
 
+    async def _save_import_session(self, session: Session) -> None:
+        saving = asyncio.create_task(asyncio.to_thread(self.progress_repository.save_session, session))
+        try:
+            await asyncio.shield(saving)
+        except asyncio.CancelledError:
+            await saving
+            raise
+
+    async def _transition_and_save_async(
+        self, session: Session, target: SessionState, event_type: str,
+    ) -> Session:
+        updated = session.transition_to(target)
+        await self._save_import_session(updated)
+        self._publish(updated, event_type)
+        return updated
+
+    async def _mark_failed_async(self, session_id: str, public_message: str) -> None:
+        try:
+            session = await asyncio.to_thread(self.get_session, session_id)
+            failed = self._validated_session_update(
+                session, state=SessionState.FAILED, updated_at=datetime.now(timezone.utc),
+            )
+            await self._save_import_session(failed)
+            self._publish(failed, "error", message=public_message)
+        except Exception:
+            return
+
     def _mark_failed(self, session_id: str, public_message: str) -> None:
         try:
             session = self.get_session(session_id)
@@ -979,29 +1015,33 @@ class SessionService:
         already recorded in the lesson's batches is left alone.
         """
 
-        if source_references:
-            approve = getattr(self.lesson_repository, "approve_source_image", None)
-            if approve is not None:
-                for reference in source_references:
-                    approve(reference)
-        repository = self.lesson_repository
-        existing = repository.get_lesson(draft.lesson_id)
-        if existing is None:
-            saved, batches = draft, [initial_batch(draft)]
-        else:
-            batches = repository.get_import_batches(draft.lesson_id)
-            if any(batch.operation_id == draft.operation_id for batch in batches):
-                self._follow_saved_scope(session_id, existing)
-                return existing
-            merged = merge_lesson(existing, draft)
-            saved, batches = merged.lesson, [*batches, merged.batch]
-        repository.save_lesson_draft(
-            saved,
-            source_references=source_references,
-            import_batches=batches,
-        )
+        saved = self._persist_lesson_draft(draft, source_references)
         self._follow_saved_scope(session_id, saved)
         return saved
+
+    def _persist_lesson_draft(self, draft: LessonDraft, source_references: list[ImageReference]) -> LessonDraft:
+        with self.lesson_repository.locked():
+            if source_references:
+                approve = getattr(self.lesson_repository, "approve_source_image", None)
+                if approve is not None:
+                    for reference in source_references:
+                        approve(reference)
+            repository = self.lesson_repository
+            existing = repository.get_lesson(draft.lesson_id)
+            if existing is None:
+                saved, batches = draft, [initial_batch(draft)]
+            else:
+                batches = repository.get_import_batches(draft.lesson_id)
+                if any(batch.operation_id == draft.operation_id for batch in batches):
+                    return existing
+                merged = merge_lesson(existing, draft)
+                saved, batches = merged.lesson, [*batches, merged.batch]
+            repository.save_lesson_draft(
+                saved,
+                source_references=source_references,
+                import_batches=batches,
+            )
+            return saved
 
     def _follow_saved_scope(self, session_id: str | None, lesson: LessonDraft) -> None:
         # Appending grows the lesson's pages; the session must keep matching it.

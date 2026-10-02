@@ -59,19 +59,23 @@ uv run python -m talkpath.main --lan
 
 ## 目前功能
 
-- 上傳課本照片，確認學程、年級、科目、課次與頁碼，再匯入課程。
+- 新建課程一次上傳一張課本照片，確認學程、年級、科目、課次與頁碼，再匯入課程。
 - 在 **My lessons** 檢視已保存課程與每次匯入的來源頁面；同一課程可分次附加內容，重複頁碼會先提示。
+- 既有課程詳情的 **Add pages** 可一次選多張照片，逐張填頁碼；課程身分唯讀。後端接受上傳後即返回 My lessons，逐頁背景提取；完成 MESSAGE 提供成功／需重試數量及課程連結。
+- 成功頁立即保存；失敗照片與頁碼留在課程詳情，按 **Retry** 只重試該頁。前端關閉、刷新或斷線不取消工作；後端重啟後，未完成頁標為中斷，需手動 Retry。
 - 從已保存課程進入詞彙、文法、聽力及閱讀活動；練習頁一次呈現一題。
 - 詞彙練習可搭配 TTS 播放與 STT 跟讀；未設定語音服務時，部分互動會使用文字替代流程。
 - 以 LessonLens 相容的 Markdown 保存課程，以 SQLite 保存作答與複習紀錄。
 
 Vision／Text／STT／TTS 由可替換的 provider adapter 提供。Direct API 是預設路徑；Pi RPC 僅作為實驗性的明確選用模式。
 
+背景匯入目前使用單一應用程式 process／worker。SQLite 保存工作與 Retry 收據，原圖保存在上傳目錄的 `page-imports/`；請勿以多個 uvicorn workers 同時處理相同資料目錄。
+
 ## 驗證
 
 ```powershell
 uv run pytest -q
-node --test frontend/test/screen-flow.test.cjs
+node --test frontend/test/*.test.cjs
 ```
 
 整合測試預設使用測試替身，不會呼叫外部模型。`tests/live/` 的真實服務測試須明確設定 `TALKPATH_LIVE_TESTS=1` 與對應的 provider；本機語音服務的設定見 [語音服務文件](docs/SPEECH_SERVICES.md)。

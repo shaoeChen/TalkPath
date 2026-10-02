@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, ContextManager
 
 from talkpath.domain.lesson_merge import ImportBatch
 from talkpath.domain.models import ActivityDraft, CourseScope, ImageReference, LessonDraft
@@ -12,6 +12,9 @@ from talkpath.domain.models import ActivityDraft, CourseScope, ImageReference, L
 
 class LessonRepository(Protocol):
     """Repository contract implemented by the Obsidian Markdown adapter."""
+
+    def locked(self) -> ContextManager:
+        """Serialize a complete lesson read/merge/publication."""
 
     def save_lesson_draft(
         self,

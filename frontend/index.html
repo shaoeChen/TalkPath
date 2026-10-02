@@ -10,6 +10,7 @@
     <title>TalkPath | Learn English your way</title>
     <link rel="stylesheet" href="/styles.css" />
     <script src="/screen-flow.js" defer></script>
+    <script src="/lesson-page-import.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -25,6 +26,8 @@
           <button class="nav-link" type="button" data-action="lessons">My lessons</button>
         </nav>
       </header>
+
+      <div id="page-import-messages" class="page-import-messages" role="status" aria-live="polite"></div>
 
       <main>
         <section id="home-screen" class="screen hero-screen" data-screen="home">
@@ -60,6 +63,7 @@
             <p>Open a saved lesson and keep practising without uploading its page again.</p>
           </div>
           <div id="lessons-list" class="lessons-list" aria-live="polite"></div>
+          <div id="page-import-status" aria-live="polite"></div>
           <p id="lessons-empty" class="lessons-empty" hidden>
             No saved lessons yet.
             <button class="secondary-button" type="button" data-action="new-course">Start a new lesson</button>
@@ -74,11 +78,40 @@
             <p id="detail-scope" class="lesson-context"></p>
           </div>
           <div id="detail-batches" class="detail-batches" aria-live="polite"></div>
+          <div id="detail-page-imports" aria-live="polite"></div>
           <p id="detail-error" class="error-message" role="alert" aria-live="polite"></p>
           <div class="form-actions">
+            <button id="detail-add-pages" class="secondary-button" type="button">Add pages</button>
             <button class="secondary-button" type="button" data-action="lessons">Back to my lessons</button>
             <button id="detail-start" class="primary-button" type="button">Start practice <span aria-hidden="true">→</span></button>
           </div>
+        </section>
+
+        <section id="add-pages-screen" class="screen form-screen" data-screen="add-pages" hidden>
+          <div class="section-heading">
+            <p class="eyebrow">Add to your lesson</p>
+            <h2 data-screen-heading tabindex="-1">Add pages</h2>
+            <p>Choose photos and enter a page number for each. You can keep using TalkPath while we read them.</p>
+          </div>
+          <dl id="add-pages-scope" class="card page-scope"></dl>
+          <form id="add-pages-form" class="card form-card" novalidate>
+            <label>Choose textbook photos
+              <input id="add-pages-files" type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif" />
+            </label>
+            <div id="add-pages-list" class="page-photo-list"></div>
+            <div id="add-pages-notice" class="scope-notice" role="alert" hidden>
+              <p id="add-pages-notice-text"></p>
+              <div class="scope-notice-actions">
+                <button id="add-pages-cancel-overlap" class="secondary-button" type="button">Cancel</button>
+                <button id="add-pages-confirm-overlap" class="primary-button" type="button">Add anyway</button>
+              </div>
+            </div>
+            <p id="add-pages-error" class="error-message" role="alert"></p>
+            <div class="form-actions">
+              <button class="secondary-button" type="button" data-action="lessons">Back to my lessons</button>
+              <button id="add-pages-submit" class="primary-button" type="submit">Add pages</button>
+            </div>
+          </form>
         </section>
 
         <section id="new-course-screen" class="screen form-screen" data-screen="new-course" hidden>

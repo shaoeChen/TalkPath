@@ -39,9 +39,24 @@ def test_child_ui_homepage_serves_core_flow_sections() -> None:
     assert html.count("data-screen-heading") >= 9
     assert re.search(
         r'<script src="/screen-flow\.js" defer></script>\s*'
+        r'<script src="/lesson-page-import\.js" defer></script>\s*'
         r'<script src="/app\.js" defer></script>',
         html,
     )
+
+
+def test_add_pages_has_separate_multi_photo_form_and_global_messages():
+    client = TestClient(create_app(testing=True))
+    html = client.get("/").text
+    assert re.search(r'<input[^>]+id="course-image"[^>]*>', html)
+    original_input = re.search(r'<input[^>]+id="course-image"[^>]*>', html).group()
+    assert "multiple" not in original_input
+    multi_input = re.search(r'<input[^>]+id="add-pages-files"[^>]*>', html).group()
+    assert "multiple" in multi_input
+    assert 'id="add-pages-scope"' in html
+    assert 'id="detail-page-imports"' in html
+    assert html.index('id="page-import-messages"') < html.index("<main")
+    assert client.get("/lesson-page-import.js").status_code == 200
 
 
 def test_child_ui_uses_focused_wizard_then_preview_and_practice_hub() -> None:

@@ -7,6 +7,8 @@ import json
 import re
 import shutil
 import tempfile
+import threading
+from functools import wraps
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -129,6 +131,14 @@ def _read_markdown_document(path: Path) -> tuple[dict[str, Any], str]:
     return metadata, match.group("body")
 
 
+def _serialized(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._publication_lock:
+            return method(self, *args, **kwargs)
+    return call
+
+
 class LessonLensMarkdownRepository:
     """Persist lessons as safe, human-readable files in an Obsidian vault.
 
@@ -146,6 +156,7 @@ class LessonLensMarkdownRepository:
         | Iterable[ImageReference]
         | None = None,
     ) -> None:
+        self._publication_lock = threading.RLock()
         self.root = Path(root).expanduser().resolve()
         try:
             self.root.mkdir(parents=True, exist_ok=True)
@@ -158,6 +169,11 @@ class LessonLensMarkdownRepository:
         if approved_image_references is not None:
             self._register_sources(approved_image_references)
 
+    def locked(self):
+        """Protect a complete read/merge/publication across nested calls."""
+        return self._publication_lock
+
+    @_serialized
     def approve_source_image(self, reference: ImageReference) -> None:
         """Register source metadata produced by the upload boundary."""
 
@@ -221,6 +237,7 @@ class LessonLensMarkdownRepository:
             raise RepositoryError(f"lesson path is not a file: {lesson_path}")
         return self._parse_lesson(lesson_dir, lesson_path)
 
+    @_serialized
     def save_lesson_draft(
         self,
         draft: LessonDraft,
@@ -576,11 +593,13 @@ class LessonLensMarkdownRepository:
                 except OSError:
                     pass
 
+    @_serialized
     def get_lesson(self, lesson_id: str) -> LessonDraft | None:
         """Read one lesson, raising on malformed existing documents."""
 
         return self._read_existing(lesson_id)
 
+    @_serialized
     def get_import_batches(self, lesson_id: str) -> list[ImportBatch]:
         """Return the imports that built a lesson, oldest first.
 
@@ -604,6 +623,7 @@ class LessonLensMarkdownRepository:
                 f"invalid import batch metadata: {lesson_dir}"
             ) from exc
 
+    @_serialized
     def source_image_path(self, lesson_id: str, image_id: str) -> Path | None:
         """Return a stored source image of this lesson, or ``None`` if it has none."""
 
@@ -688,6 +708,7 @@ class LessonLensMarkdownRepository:
         except (KeyError, TypeError, ValueError) as exc:
             raise LessonLensParseError(f"invalid content metadata: {lesson_dir}") from exc
 
+    @_serialized
     def list_lessons(self, scope: CourseScope | None = None) -> list[LessonDraft]:
         curriculum_root = self.root / "curricula"
         if not curriculum_root.exists():
@@ -697,6 +718,7 @@ class LessonLensMarkdownRepository:
             lessons = [lesson for lesson in lessons if lesson.scope == scope]
         return sorted(lessons, key=lambda lesson: lesson.lesson_id)
 
+    @_serialized
     def delete_lesson(self, lesson_id: str) -> None:
         lesson_dir = self._lesson_dir(lesson_id)
         if not lesson_dir.exists():
@@ -706,6 +728,7 @@ class LessonLensMarkdownRepository:
         except OSError as exc:
             raise RepositoryError(f"could not delete LessonLens lesson: {lesson_id}") from exc
 
+    @_serialized
     def save_activity_draft(self, draft: ActivityDraft) -> None:
         """Persist one generated activity under its lesson's activities folder.
 
@@ -768,6 +791,7 @@ class LessonLensMarkdownRepository:
         except OSError as exc:
             raise RepositoryError(f"could not write LessonLens activity: {activity_id}") from exc
 
+    @_serialized
     def get_activity_draft(self, activity_id: str) -> ActivityDraft | None:
         """Find and validate one generated activity by stable ID."""
 

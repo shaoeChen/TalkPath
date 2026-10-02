@@ -62,17 +62,25 @@
     importCheck: null,
     appendWarningAccepted: false,
     detailLesson: null,
+    pageDraft: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => Array.from(document.querySelectorAll(selector));
   let screenController = null;
+  let pageImportController = null;
+  let pageImportSocket = null;
+  let pageImportReconnect = null;
+  let pageImportClosing = false;
+  const pageImportTitles = new Map();
+  const pageRetryAttempts = new Map();
 
   class ApiError extends Error {
-    constructor(message, status) {
+    constructor(message, status, payload = {}) {
       super(message);
       this.name = "ApiError";
       this.status = status;
+      this.payload = payload;
     }
   }
 
@@ -89,7 +97,7 @@
     }
     if (!response.ok) {
       const detail = typeof payload.detail === "string" ? payload.detail : "Something went wrong.";
-      throw new ApiError(detail, response.status);
+      throw new ApiError(detail, response.status, payload);
     }
     return payload;
   }
@@ -103,6 +111,7 @@
 
   function showScreen(name) {
     if (!screenController) throw new Error("screen controller is not initialized");
+    if (screenController.current() === "add-pages" && name !== "add-pages") clearPageDraft();
     return screenController.show(name);
   }
 
@@ -1663,6 +1672,7 @@
     if (!list) return;
     const empty = $("#lessons-empty");
     const saved = Array.isArray(lessons) ? lessons : [];
+    saved.forEach((lesson) => pageImportTitles.set(lesson.lesson_id, lesson.title || "Lesson"));
     list.replaceChildren();
     if (!saved.length) {
       if (empty) empty.hidden = false;
@@ -1780,6 +1790,9 @@
   }
 
   function renderLessonDetail(lesson, batches) {
+    state.detailLesson = lesson;
+    pageImportTitles.set(lesson.lesson_id, lesson.title || "Lesson");
+    renderPageImportDetails();
     setText("#detail-title", lesson.title || "Lesson");
     setText("#detail-scope", lessonScopeSummary(lesson.scope || {}));
     const container = $("#detail-batches");
@@ -1924,7 +1937,306 @@
     note.hidden = false;
   }
 
+  function clearPageDraft() {
+    if (state.pageDraft) {
+      state.pageDraft.entries.forEach((entry) => URL.revokeObjectURL(entry.preview));
+      state.pageDraft = null;
+    }
+  }
+
+  function openAddPages() {
+    if (!state.detailLesson || !state.detailLesson.lesson_id) return;
+    clearPageDraft();
+    invalidateNavigation();
+    state.pageDraft = { lessonId: state.detailLesson.lesson_id, entries: [], operationId: null, submitting: false, allowOverlap: false };
+    const context = $("#add-pages-scope");
+    context.replaceChildren();
+    for (const [label, key] of [["Program", "program"], ["Grade", "grade"], ["Subject", "subject"], ["Lesson", "lesson"], ["Textbook", "textbook"]]) {
+      const term = document.createElement("dt");
+      const value = document.createElement("dd");
+      term.textContent = label;
+      value.textContent = (state.detailLesson.scope || {})[key] || "Not set";
+      context.append(term, value);
+    }
+    $("#add-pages-list").replaceChildren();
+    $("#add-pages-notice").hidden = true;
+    $("#add-pages-files").value = "";
+    $("#add-pages-files").disabled = false;
+    setBusy($("#add-pages-submit"), false);
+    showError("#add-pages-error", "");
+    showScreen("add-pages");
+  }
+
+  function pageDraftChanged() {
+    const draft = state.pageDraft;
+    if (!draft) return;
+    draft.operationId = null;
+    draft.allowOverlap = false;
+    $("#add-pages-notice").hidden = true;
+  }
+
+  function addPageFiles(files) {
+    const draft = state.pageDraft;
+    if (!draft || draft.submitting) return;
+    for (const file of files) draft.entries.push({ file, pageLabel: "", preview: URL.createObjectURL(file) });
+    pageDraftChanged();
+    renderPagePhotos();
+  }
+
+  function renderPagePhotos() {
+    const container = $("#add-pages-list");
+    container.replaceChildren();
+    const draft = state.pageDraft;
+    if (!draft) return;
+    draft.entries.forEach((entry) => {
+      const row = document.createElement("div");
+      row.className = "page-photo-row";
+      const photo = document.createElement("img");
+      photo.src = entry.preview;
+      photo.alt = "Selected textbook photo";
+      const label = document.createElement("label");
+      label.textContent = "Page number";
+      const input = document.createElement("input");
+      input.value = entry.pageLabel;
+      input.placeholder = "Example: 12 or 12-13";
+      input.required = true;
+      input.disabled = draft.submitting;
+      input.addEventListener("input", () => { entry.pageLabel = input.value; pageDraftChanged(); });
+      label.append(input);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "secondary-button";
+      remove.textContent = "Remove";
+      remove.disabled = draft.submitting;
+      remove.addEventListener("click", () => {
+        if (draft.submitting || state.pageDraft !== draft) return;
+        URL.revokeObjectURL(entry.preview);
+        draft.entries = draft.entries.filter((candidate) => candidate !== entry);
+        pageDraftChanged();
+        renderPagePhotos();
+      });
+      row.append(photo, label, remove);
+      container.append(row);
+    });
+  }
+
+  async function submitPageDraft() {
+    const draft = state.pageDraft;
+    if (!draft || draft.submitting) return;
+    const epoch = state.navigationEpoch;
+    draft.operationId = draft.operationId || operationId("page-import");
+    let body;
+    try {
+      body = window.TalkPathPageImport.buildSubmission({ lessonId: draft.lessonId, entries: draft.entries, operationId: draft.operationId, allowOverlap: draft.allowOverlap });
+    } catch (error) {
+      showError("#add-pages-error", error.message);
+      return;
+    }
+    draft.submitting = true;
+    setBusy($("#add-pages-submit"), true, "Uploading…");
+    $("#add-pages-files").disabled = true;
+    renderPagePhotos();
+    showError("#add-pages-error", "");
+    try {
+      if (!draft.allowOverlap) {
+        const check = await api(`/api/lessons/${encodeURIComponent(draft.lessonId)}/page-imports/check`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pages: draft.entries.map((entry) => entry.pageLabel.trim()) }),
+        });
+        if (state.pageDraft !== draft || state.navigationEpoch !== epoch) return;
+        if (check.overlapping_pages.length) {
+          setText("#add-pages-notice-text", `Pages ${check.overlapping_pages.join(", ")} were already added. Add them anyway?`);
+          $("#add-pages-notice").hidden = false;
+          return;
+        }
+      }
+      const job = await api(`/api/lessons/${encodeURIComponent(draft.lessonId)}/page-imports`, { method: "POST", body });
+      if (pageImportController) pageImportController.merge(job);
+      if (state.pageDraft !== draft || state.navigationEpoch !== epoch) return;
+      invalidateNavigation();
+      showScreen("lessons");
+      await loadSavedLessons();
+      renderPageImportStatus();
+    } catch (error) {
+      if (state.pageDraft !== draft || state.navigationEpoch !== epoch) return;
+      if (error.payload && Array.isArray(error.payload.overlapping_pages)) {
+        setText("#add-pages-notice-text", `Pages ${error.payload.overlapping_pages.join(", ")} were already added. Add them anyway?`);
+        $("#add-pages-notice").hidden = false;
+      } else showError("#add-pages-error", error.message || "I could not submit these photos.");
+    } finally {
+      draft.submitting = false;
+      if (state.pageDraft === draft) {
+        setBusy($("#add-pages-submit"), false);
+        $("#add-pages-files").disabled = false;
+        renderPagePhotos();
+      }
+    }
+  }
+
+  function importLessonLink(job) {
+    const link = document.createElement("a");
+    link.href = `#lesson-${encodeURIComponent(job.lesson_id)}`;
+    link.textContent = "View lesson";
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      openLessonDetail({ lesson_id: job.lesson_id, title: pageImportTitles.get(job.lesson_id) || "Lesson" });
+    });
+    return link;
+  }
+
+  function renderPageImportStatus() {
+    const container = $("#page-import-status");
+    if (!container || !pageImportController) return;
+    container.replaceChildren();
+    pageImportController.jobs().filter((job) => job.status === "processing").forEach((job) => {
+      const line = document.createElement("p");
+      line.className = "page-import-status";
+      line.textContent = `${pageImportTitles.get(job.lesson_id) || "Lesson"}: adding ${job.counts.total} pages · ${job.counts.succeeded} ready. `;
+      line.append(importLessonLink(job));
+      container.append(line);
+    });
+  }
+
+  function renderPageImportDetails() {
+    const container = $("#detail-page-imports");
+    if (!container || !pageImportController || !state.detailLesson) return;
+    container.replaceChildren();
+    pageImportController.jobs().filter((job) => job.lesson_id === state.detailLesson.lesson_id).forEach((job) => {
+      job.pages.filter((page) => page.status !== "succeeded").forEach((page) => {
+        const row = document.createElement("article");
+        row.className = "page-photo-row";
+        const image = document.createElement("img");
+        image.src = `/api/lesson-page-imports/${encodeURIComponent(job.job_id)}/pages/${encodeURIComponent(page.page_id)}/image`;
+        image.alt = `Textbook page ${page.page_label}`;
+        image.loading = "lazy";
+        const text = document.createElement("p");
+        const status = { queued: "Waiting", running: "Reading this page…", failed: "Could not finish", interrupted: "Interrupted — please retry" }[page.status] || page.status;
+        text.textContent = `Page ${page.page_label}: ${status}. ${page.error_message || ""}`;
+        row.append(image, text);
+        if (window.TalkPathPageImport.retryAllowed(page)) {
+          const retryKey = `${job.job_id}:${page.page_id}`;
+          let attempt = pageRetryAttempts.get(retryKey);
+          if (!attempt || (!attempt.pending && attempt.completionRevision !== job.completion_revision)) {
+            attempt = { operationId: null, pending: false, completionRevision: job.completion_revision };
+            pageRetryAttempts.set(retryKey, attempt);
+          }
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "secondary-button";
+          button.textContent = "Retry";
+          if (attempt.pending) setBusy(button, true, "Retrying…");
+          else button.disabled = false;
+          button.addEventListener("click", async () => {
+            if (attempt.pending) return;
+            attempt.pending = true;
+            setBusy(button, true, "Retrying…");
+            attempt.operationId = attempt.operationId || operationId("page-retry");
+            const epoch = state.navigationEpoch;
+            try {
+              const updated = await api(`/api/lesson-page-imports/${encodeURIComponent(job.job_id)}/pages/${encodeURIComponent(page.page_id)}/retry`, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation_id: attempt.operationId }),
+              });
+              pageImportController.merge(updated);
+              if (pageRetryAttempts.get(retryKey) === attempt) pageRetryAttempts.delete(retryKey);
+            } catch (error) {
+              if (state.navigationEpoch === epoch) showError("#detail-error", error.message);
+              await refreshPageImports();
+            } finally {
+              attempt.pending = false;
+              renderPageImportDetails();
+            }
+          });
+          row.append(button);
+        }
+        container.append(row);
+      });
+    });
+  }
+
+  function showPageImportMessage(job, message) {
+    const container = $("#page-import-messages");
+    if (!container) return;
+    const row = document.createElement("div");
+    row.className = "page-import-message";
+    const text = document.createElement("span");
+    text.textContent = `MESSAGE · ${message} `;
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "secondary-button";
+    dismiss.textContent = "Dismiss";
+    dismiss.addEventListener("click", () => row.remove());
+    row.append(text, importLessonLink(job), dismiss);
+    container.append(row);
+    if (screenController.current() === "lesson-detail" && state.detailLesson && state.detailLesson.lesson_id === job.lesson_id)
+      refreshLessonDetail(job.lesson_id);
+    if (screenController.current() === "lessons") loadSavedLessons();
+  }
+
+  async function refreshLessonDetail(lessonId) {
+    const epoch = state.navigationEpoch;
+    try {
+      const [lesson, batches] = await Promise.all([
+        api(`/api/lessons/${encodeURIComponent(lessonId)}`),
+        api(`/api/lessons/${encodeURIComponent(lessonId)}/batches`),
+      ]);
+      if (state.navigationEpoch !== epoch || screenController.current() !== "lesson-detail"
+        || state.detailLesson?.lesson_id !== lessonId) return;
+      renderLessonDetail(lesson, batches);
+    } catch (_error) { /* Keep the current detail while a background refresh is unavailable. */ }
+  }
+
+  async function refreshPageImports() {
+    if (!pageImportController || pageImportClosing) return;
+    try { pageImportController.snapshot(await api("/api/lesson-page-imports")); }
+    catch (_error) { /* Preserve the last durable snapshot until reconnect. */ }
+  }
+
+  function connectPageImports() {
+    if (pageImportClosing || !pageImportController) return;
+    clearTimeout(pageImportReconnect);
+    const socket = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/lesson-page-imports`);
+    pageImportSocket = socket;
+    socket.onmessage = (event) => {
+      if (pageImportSocket !== socket) return;
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "page_import_snapshot") pageImportController.snapshot(payload.jobs);
+        if (payload.type === "page_import_updated") pageImportController.merge(payload.job);
+      } catch (_error) { refreshPageImports(); }
+    };
+    socket.onclose = () => {
+      if (pageImportSocket === socket && !pageImportClosing) pageImportReconnect = setTimeout(connectPageImports, 2500);
+    };
+    socket.onerror = () => socket.close();
+  }
+
+  function initPageImports() {
+    if (!window.TalkPathPageImport) return;
+    pageImportController = window.TalkPathPageImport.createPageImportController({
+      seenStore: {
+        get: (id) => Number(window.localStorage.getItem(`talkpath:page-import:${id}`) || 0),
+        set: (id, revision) => window.localStorage.setItem(`talkpath:page-import:${id}`, String(revision)),
+      },
+      onUpdate: () => { renderPageImportStatus(); renderPageImportDetails(); },
+      onComplete: showPageImportMessage,
+    });
+    connectPageImports();
+    refreshPageImports();
+    window.addEventListener("focus", refreshPageImports);
+    window.addEventListener("beforeunload", () => {
+      pageImportClosing = true;
+      clearTimeout(pageImportReconnect);
+      if (pageImportSocket) pageImportSocket.close();
+      clearPageDraft();
+    });
+  }
+
   function wireActions() {
+    $("#detail-add-pages").addEventListener("click", openAddPages);
+    $("#add-pages-files").addEventListener("change", (event) => { addPageFiles(Array.from(event.target.files || [])); event.target.value = ""; });
+    $("#add-pages-form").addEventListener("submit", (event) => { event.preventDefault(); submitPageDraft(); });
+    $("#add-pages-cancel-overlap").addEventListener("click", () => { $("#add-pages-notice").hidden = true; if (state.pageDraft) state.pageDraft.allowOverlap = false; });
+    $("#add-pages-confirm-overlap").addEventListener("click", () => { if (state.pageDraft) { state.pageDraft.allowOverlap = true; submitPageDraft(); } });
     $$('[data-action="home"]').forEach((button) => button.addEventListener("click", () => {
       resetForNewCourse();
       showScreen("home");
@@ -2095,6 +2407,7 @@
     });
     renderActivityCards();
     wireActions();
+    initPageImports();
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

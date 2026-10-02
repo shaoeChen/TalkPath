@@ -31,6 +31,10 @@ from talkpath.application.activity_service import (
 from talkpath.api.internal_tools import router as internal_tools_router
 from talkpath.api.provider_health import provider_health_report
 from talkpath.api.routes import router as public_router
+from talkpath.api.page_import_routes import router as page_import_router
+from talkpath.adapters.sqlite_page_import import SQLitePageImportRepository
+from talkpath.application.page_import_service import PageImportService
+from talkpath.domain.page_import import PageImportNotFound, PageImportConflict, InvalidPageImport
 from talkpath.config import Settings, get_settings
 from talkpath.domain.errors import (
     DomainError,
@@ -45,6 +49,12 @@ from talkpath.domain.errors import (
 
 
 def _domain_status(error: DomainError) -> int:
+    if isinstance(error, PageImportNotFound):
+        return 404
+    if isinstance(error, InvalidPageImport):
+        return 422
+    if isinstance(error, PageImportConflict):
+        return 409
     if isinstance(
         error,
         (
@@ -88,6 +98,12 @@ def _domain_status(error: DomainError) -> int:
 
 
 def _domain_code(error: DomainError) -> str:
+    if isinstance(error, PageImportNotFound):
+        return "page_import_not_found"
+    if isinstance(error, InvalidPageImport):
+        return "invalid_page_import"
+    if isinstance(error, PageImportConflict):
+        return "page_import_conflict"
     if isinstance(error, ScopeNotConfirmed):
         return "scope_not_confirmed"
     if isinstance(error, UploadValidationError):
@@ -135,6 +151,7 @@ def create_app(
     services: SessionService | None = None,
     service: SessionService | None = None,
     testing: bool = False,
+    page_import_service: PageImportService | None = None,
 ) -> FastAPI:
     """Create the TalkPath API with production defaults or injected fakes."""
 
@@ -172,6 +189,17 @@ def create_app(
         app.router.add_event_handler("shutdown", configured_service.aclose)
     app.state.settings = settings
     app.state.testing = testing
+    if page_import_service is None and isinstance(configured_service, SessionService):
+        page_import_service = PageImportService(
+            configured_service,
+            SQLitePageImportRepository(getattr(configured_service.progress_repository, "database_path", settings.sqlite_path)),
+            configured_service.upload_root / "page-imports",
+        )
+    app.state.page_import_service = page_import_service
+    if page_import_service is not None:
+        app.router.add_event_handler("startup", page_import_service.start)
+        # Stop imports before closing provider resources registered above.
+        app.router.on_shutdown.insert(0, page_import_service.stop)
     app.state.internal_tool_token = (
         settings.internal_tool_token.get_secret_value()
         if settings.internal_tool_token is not None
@@ -183,9 +211,11 @@ def create_app(
         return JSONResponse(
             status_code=_domain_status(exc),
             content={
-                "detail": str(exc),
+                "detail": "I could not access the saved data. Please try again." if isinstance(exc, RepositoryError) else str(exc),
                 "code": _domain_code(exc),
                 "retryable": _domain_retryable(exc),
+                **({"overlapping_pages": exc.overlapping_pages} if hasattr(exc, "overlapping_pages") else {}),
+                **({"job_id": exc.job_id} if hasattr(exc, "job_id") else {}),
             },
         )
 
@@ -198,6 +228,7 @@ def create_app(
         return provider_health_report(settings)
 
     app.include_router(public_router)
+    app.include_router(page_import_router)
     app.include_router(internal_tools_router)
     frontend_root = Path(__file__).resolve().parents[3] / "frontend"
     app.mount("/", StaticFiles(directory=frontend_root, html=True), name="frontend")
