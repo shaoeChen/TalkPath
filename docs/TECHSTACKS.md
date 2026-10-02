@@ -20,6 +20,9 @@
 
 ## 資料保存
 - LessonLens：以 Obsidian Markdown 筆記與 Properties 保存課程，透過 repository 介面存取；進度使用 SQLite
+- 背景新增頁面：同一 SQLite 中的 `lesson_page_import_jobs`、`lesson_page_import_pages`、`lesson_page_import_retries` 保存工作、逐頁狀態與冪等收據；原圖保存在 `upload_root/page-imports/<job_id>/<page_id>`。
+- 執行：單一應用程式 process 管理一個 asyncio worker，沿用原 provider／Pi 事件迴圈；同步照片、SQLite 與 Markdown 匯入存取移至 thread。LessonLens 讀取、合併及發布共用 instance `threading.RLock`；重啟依 ImportBatch 證據校正，無證據的未完成頁需手動 Retry。
+- 通知：獨立 `/ws/lesson-page-imports` 提供快照與 revision 更新；原生前端以 localStorage 保存已見完成版本，斷線不取消 worker。
 
 ## 測試
 - Python：pytest、pytest-asyncio（`uv run pytest -q`）
